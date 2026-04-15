@@ -44,8 +44,31 @@ public class PromocaoService {
     }
 
     public void start() {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("║" + centerString("SERVICO DE VALIDACAO DE PROMOCOES", 58) + "║");
+        System.out.println("║" + centerString("Processador e Publicador de Eventos", 58) + "║");
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("=".repeat(60));
+        System.out.println();
+        
         this.channel = getChannel();
-        System.out.println("PromocaoService iniciado e aguardando eventos...");
+        
+        System.out.println();
+        System.out.println("├─ Status: OPERACIONAL");
+        System.out.println("├─ Fila: " + PROMOCAO_QUEUE);
+        System.out.println("├─ Exchange: " + EXCHANGE_NAME);
+        System.out.println("├─ Modo: Aguardando eventos de promocao recebida");
+        System.out.println("└─ Timestamp: " + java.time.LocalDateTime.now());
+        System.out.println();
+        System.out.println("Servico pronto para processar e validar promocoes...\n");
+    }
+    
+    private String centerString(String s, int size) {
+        if (s.length() >= size) return s;
+        int totalPadding = size - s.length();
+        int leftPadding = totalPadding / 2;
+        return " ".repeat(leftPadding) + s + " ".repeat(totalPadding - leftPadding);
     }
 
     private void processMessage(String message) throws Exception {
@@ -53,13 +76,13 @@ public class PromocaoService {
 
         // Validar assinatura
         if (!validarAssinatura(evento)) {
-            System.err.println("❌ EVENTO REJEITADO: Assinatura inválida!");
+            System.err.println("[ERRO] EVENTO REJEITADO: Assinatura invalida!");
             return;
         }
-        System.out.println("✓ Assinatura válida! Processando evento...");
+        System.out.println("[VALIDADO] Assinatura do produtor: " + evento.getProdutor());
 
         // Simular processamento da promoção (pode incluir lógica de negócios aqui)
-        System.out.println("Processando promoção: " + evento.getConteudo());
+        System.out.println("[PROCESSANDO] Promocao recebida");
         // Criar evento de promoção publicada
         Evento promocaoPublicada = new Evento();
         promocaoPublicada.setProdutor(PRODUTOR_ID);
@@ -72,7 +95,7 @@ public class PromocaoService {
         // Publicar o evento de promoção publicada
         String promocaoPublicadaJson = objectMapper.writeValueAsString(promocaoPublicada);
         channel.basicPublish(EXCHANGE_NAME, PROMOCAO_PUBLICADA_ROUTING_KEY, null, promocaoPublicadaJson.getBytes(StandardCharsets.UTF_8));
-        System.out.println("✓ Evento de promoção publicada enviado com sucesso!");
+        System.out.println("[PUBLICADO] Evento: " + PROMOCAO_PUBLICADA_ROUTING_KEY);
     }
 
     /**
@@ -86,16 +109,14 @@ public class PromocaoService {
             // Validar a assinatura
             boolean isValid = CryptoUtil.verify(evento.getConteudo(), evento.getAssinatura(), publicKey);
 
-            if (isValid) {
-                System.out.println("✓ Assinatura válida do produtor: " + evento.getProdutor());
-            } else {
-                System.err.println("❌ Assinatura inválida do produtor: " + evento.getProdutor());
+            if (!isValid) {
+                System.err.println("[ERRO] Assinatura invalida do produtor: " + evento.getProdutor());
             }
 
             return isValid;
 
         } catch (Exception e) {
-            System.err.println("❌ Erro ao validar assinatura: " + e.getMessage());
+            System.err.println("[ERRO] Falha ao validar assinatura: " + e.getMessage());
             return false;
         }
     }

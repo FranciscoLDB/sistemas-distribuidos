@@ -59,17 +59,40 @@ public class GatewayService {
     }
 
     public void start() {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("║" + centerString("SERVICO GATEWAY - ENTRADA DO SISTEMA", 58) + "║");
+        System.out.println("║" + centerString("Interacao com Usuarios e Gerenciamento de Promocoes", 58) + "║");
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("=".repeat(60));
+        System.out.println();
+        
         channel = getChannel();
+        
+        System.out.println();
+        System.out.println("├─ Status: OPERACIONAL");
+        System.out.println("├─ Fila: " + GATEWAY_QUEUE);
+        System.out.println("├─ Exchange: " + EXCHANGE_NAME);
+        System.out.println("├─ Modo: Aguardando interacao do usuario");
+        System.out.println("└─ Timestamp: " + java.time.LocalDateTime.now());
+        System.out.println();
 
         while (true) {
             int choice = displayMenu();
 
             if (!handleMenuChoice(choice)) {
-                break;  // Exit the loop if user chooses to exit
+                break;
             }
         }
 
         PromocaoRepository.fechar();
+    }
+
+    private String centerString(String s, int size) {
+        if (s.length() >= size) return s;
+        int totalPadding = size - s.length();
+        int leftPadding = totalPadding / 2;
+        return " ".repeat(leftPadding) + s + " ".repeat(totalPadding - leftPadding);
     }
 
     public void printMenu() {
@@ -85,7 +108,7 @@ public class GatewayService {
     }
 
     public int displayMenu() {
-        System.out.println("\033[2J\033[H"); // Clear the terminal screen
+        System.out.println("\n"); // Clear the terminal screen
         printMenu();
         int choice = scanner.nextInt();
         scanner.nextLine(); // Consume the newline
@@ -159,10 +182,10 @@ public class GatewayService {
 
             // Validar assinatura
             if (!validarAssinatura(evento)) {
-                System.err.println("❌ EVENTO REJEITADO: Assinatura inválida!");
+                System.err.println(" EVENTO REJEITADO: Assinatura inválida!");
                 return;
             }
-            System.out.println("✓ Assinatura válida! Processando evento...");
+            System.out.println(" Assinatura válida! Processando evento...");
 
             Promocao promocao = objectMapper.readValue(evento.getConteudo(), Promocao.class);
 
@@ -195,16 +218,14 @@ public class GatewayService {
             // Validar a assinatura
             boolean isValid = CryptoUtil.verify(evento.getConteudo(), evento.getAssinatura(), publicKey);
 
-            if (isValid) {
-                System.out.println("✓ Assinatura válida do produtor: " + evento.getProdutor());
-            } else {
-                System.err.println("❌ Assinatura inválida do produtor: " + evento.getProdutor());
+            if (!isValid) {
+                System.err.println("[ERRO] Assinatura invalida do produtor: " + evento.getProdutor());
             }
 
             return isValid;
 
         } catch (Exception e) {
-            System.err.println("❌ Erro ao validar assinatura: " + e.getMessage());
+            System.err.println("[ERRO] Falha ao validar assinatura: " + e.getMessage());
             return false;
         }
     }
@@ -258,7 +279,7 @@ public class GatewayService {
         boolean success = publishPromotion(promocao);
 
         if (success) {
-            System.out.println("\n✓ Promoção cadastrada com sucesso!");
+            System.out.println("\n Promoção cadastrada com sucesso!");
             System.out.println("╔════════════════════════════════════╗");
             System.out.println("║       PROMOÇÃO EM VALIDAÇÃO        ║");
             System.out.println("╠════════════════════════════════════╣");
@@ -289,10 +310,10 @@ public class GatewayService {
                     message.getBytes(StandardCharsets.UTF_8)
             );
 
-            System.out.println("✓ Evento assinado e publicado: " + PROMOCAO_RECEBIDA_ROUTING_KEY);
+            System.out.println("[PUBLICADO] Evento: " + PROMOCAO_RECEBIDA_ROUTING_KEY);
             return true;
         } catch (Exception e) {
-            System.err.println("Erro ao publicar promoção: " + e.getMessage());
+            System.err.println("[ERRO] Falha ao publicar promocao: " + e.getMessage());
             return false;
         }
     }
@@ -370,7 +391,7 @@ public class GatewayService {
             boolean success = publishVote(selecionada);
 
             if (success) {
-                System.out.println("✓ Voto registrado e evento publicado!");
+                System.out.println(" Voto registrado e evento publicado!");
                 System.out.println("Promoção: " + selecionada.getNomeProduto());
             } else {
                 System.err.println("Erro ao publicar voto.");
@@ -407,10 +428,10 @@ public class GatewayService {
                     mensagem.getBytes(StandardCharsets.UTF_8)
             );
 
-            System.out.println("✓ Evento de voto assinado e publicado");
+            System.out.println("[PUBLICADO] Evento: " + PROMOCAO_VOTO_ROUTING_KEY);
             return true;
         } catch (Exception e) {
-            System.err.println("Erro ao publicar voto: " + e.getMessage());
+            System.err.println("[ERRO] Falha ao publicar voto: " + e.getMessage());
             return false;
         }
     }

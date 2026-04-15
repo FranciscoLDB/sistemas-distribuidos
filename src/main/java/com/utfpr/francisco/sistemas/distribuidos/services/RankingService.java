@@ -45,8 +45,31 @@ public class RankingService {
     }
 
     public void start() {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("║" + centerString("SERVICO DE RANKING E DESTAQUE", 58) + "║");
+        System.out.println("║" + centerString("Processador de Votos e Identificador de Hot Deals", 58) + "║");
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("=".repeat(60));
+        System.out.println();
+        
         this.channel = getChannel();
-        System.out.println("RankingService iniciado e aguardando eventos...");
+        
+        System.out.println();
+        System.out.println("├─ Status: OPERACIONAL");
+        System.out.println("├─ Fila: " + PROMOCAO_QUEUE);
+        System.out.println("├─ Exchange: " + EXCHANGE_NAME);
+        System.out.println("├─ Modo: Aguardando eventos de voto");
+        System.out.println("└─ Timestamp: " + java.time.LocalDateTime.now());
+        System.out.println();
+        System.out.println("Servico pronto para processar votos e identificar destaques...\n");
+    }
+    
+    private String centerString(String s, int size) {
+        if (s.length() >= size) return s;
+        int totalPadding = size - s.length();
+        int leftPadding = totalPadding / 2;
+        return " ".repeat(leftPadding) + s + " ".repeat(totalPadding - leftPadding);
     }
 
     private void processMessage(String message) throws Exception {
@@ -54,34 +77,31 @@ public class RankingService {
 
         // Validar assinatura
         if (!CryptoUtil.validarAssinatura(evento)) {
-            System.err.println("❌ EVENTO REJEITADO: Assinatura inválida!");
+            System.err.println("[ERRO] EVENTO REJEITADO: Assinatura invalida!");
             return;
         }
-        System.out.println("✓ Assinatura válida! Processando evento...");
+        System.out.println("[VALIDADO] Assinatura do produtor: " + evento.getProdutor());
 
         Promocao promocao = objectMapper.readValue(evento.getConteudo(), Promocao.class);
 
         processaVoto(promocao);
-
-        // Simular processamento da promoção (pode incluir lógica de negócios aqui)
-        System.out.println("Processando promoção: " + evento.getConteudo());
     }
 
     private void processaVoto(Promocao promocao) throws Exception {
-        System.out.println("Processa voto");
+        System.out.println("[PROCESSANDO] Voto registrado para: " + promocao.getNomeProduto());
+        System.out.println("[INFO] Total de votos: " + promocao.getVotos());
 
         // Calcula voto
-        boolean isDestaque;
-        isDestaque = true;
+        boolean isDestaque = promocao.getVotos() >= 5;
 
         if (isDestaque) {
+            System.out.println("[DESTAQUE] Promocao identificada como hot deal!");
             promocao.setStatus("DESTAQUE");
             Evento evento = criarEvento(objectMapper.writeValueAsString(promocao));
 
-            // Publicar o evento de promoção publicada
             String eventoJson = objectMapper.writeValueAsString(evento);
             channel.basicPublish(EXCHANGE_NAME, PROMOCAO_DESTAQUE_ROUTING_KEY, null, eventoJson.getBytes(StandardCharsets.UTF_8));
-            System.out.println("✓ Evento de promoção destaque enviado com sucesso!");
+            System.out.println("[PUBLICADO] Evento: " + PROMOCAO_DESTAQUE_ROUTING_KEY);
         }
     }
 

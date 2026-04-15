@@ -1,10 +1,12 @@
 package com.utfpr.francisco.sistemas.distribuidos.services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
+import com.utfpr.francisco.sistemas.distribuidos.model.Evento;
 import com.utfpr.francisco.sistemas.distribuidos.model.Promocao;
 import org.h2.util.StringUtils;
 
@@ -60,26 +62,41 @@ public class ClienteService {
     }
 
     public void start() {
-        System.out.println("═══════════════════════════════════════════════════════");
-        System.out.println("╔════════════════════════════════════════════════════╗");
-        System.out.println("║         CLIENTE CONSUMIDOR DE PROMOÇÕES            ║");
-        System.out.println("╠════════════════════════════════════════════════════╣");
-        System.out.println("║ ID do Cliente: " + padRight(this.clienteId, 37) + "║");
-        System.out.println("╚════════════════════════════════════════════════════╝");
+        System.out.println("\n" + "═".repeat(60));
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("║" + centerString("CLIENTE CONSUMIDOR DE PROMOCOES", 58) + "║");
+        System.out.println("║" + centerString("Receptor de Notificacoes de Promocoes", 58) + "║");
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("═".repeat(60));
+        System.out.println();
+        System.out.println("ID do Cliente: " + this.clienteId);
+        System.out.println();
 
         // Menu para seleção de categorias
         selecionarCategorias();
 
         if (categoriasInteresse.isEmpty()) {
-            System.out.println("\n❌ Nenhuma categoria selecionada. Encerrando...");
+            System.out.println("\n[AVISO] Nenhuma categoria selecionada. Encerrando...");
             return;
         }
 
         this.channel = getChannel();
 
-        System.out.println("\n✓ Conectado ao RabbitMQ");
-        System.out.println("✓ Aguardando notificações de promoções...");
-        System.out.println("═══════════════════════════════════════════════════════\n");
+        System.out.println();
+        System.out.println("├─ Status: OPERACIONAL");
+        System.out.println("├─ Fila: " + clienteQueue);
+        System.out.println("├─ Exchange: " + EXCHANGE_NAME);
+        System.out.println("├─ Modo: Aguardando notificacoes");
+        System.out.println("└─ Timestamp: " + java.time.LocalDateTime.now());
+        System.out.println();
+        System.out.println("Servico pronto para receber notificacoes...\n");
+    }
+
+    private String centerString(String s, int size) {
+        if (s.length() >= size) return s;
+        int totalPadding = size - s.length();
+        int leftPadding = totalPadding / 2;
+        return " ".repeat(leftPadding) + s + " ".repeat(totalPadding - leftPadding);
     }
 
     private void selecionarCategorias() {
@@ -92,7 +109,7 @@ public class ClienteService {
 
             for (int i = 0; i < CATEGORIAS_DISPONIVEIS.size(); i++) {
                 String categoria = CATEGORIAS_DISPONIVEIS.get(i);
-                String marcado = categoriasInteresse.contains(categoria) ? "✓" : " ";
+                String marcado = categoriasInteresse.contains(categoria) ? "X" : " ";
                 System.out.printf("║ [%s] %d. %-44s║%n", marcado, (i + 1), categoria.toUpperCase());
             }
 
@@ -107,7 +124,7 @@ public class ClienteService {
 
                 if (choice == 0) {
                     if (categoriasInteresse.isEmpty()) {
-                        System.out.println("\n❌ Você deve selecionar pelo menos uma categoria!");
+                        System.out.println("\n Você deve selecionar pelo menos uma categoria!");
                         continue;
                     }
                     selecionando = false;
@@ -115,21 +132,21 @@ public class ClienteService {
                     String categoria = CATEGORIAS_DISPONIVEIS.get(choice - 1);
                     if (categoriasInteresse.contains(categoria)) {
                         categoriasInteresse.remove(categoria);
-                        System.out.println("✓ Categoria '" + categoria + "' removida.");
+                        System.out.println("[REMOVIDA] Categoria: " + categoria);
                     } else {
                         categoriasInteresse.add(categoria);
-                        System.out.println("✓ Categoria '" + categoria + "' adicionada.");
+                        System.out.println("[ADICIONADA] Categoria: " + categoria);
                     }
                 } else {
-                    System.out.println("❌ Opção inválida!");
+                    System.out.println("[ERRO] Opcao invalida!");
                 }
             } catch (Exception e) {
                 scanner.nextLine();
-                System.out.println("❌ Entrada inválida!");
+                System.out.println("[ERRO] Entrada invalida!");
             }
         }
 
-        System.out.println("\n✓ Categorias selecionadas:");
+        System.out.println("\n Categorias selecionadas:");
         for (String cat : categoriasInteresse) {
             System.out.println("   • " + cat.toUpperCase());
         }
@@ -148,11 +165,11 @@ public class ClienteService {
             channel.queueDeclare(clienteQueue, true, false, false, args);
 
             // Bind para cada categoria de interesse selecionada
-            System.out.println("\n📢 Inscrevendo em categorias...");
+            System.out.println("\nInscrevendo em categorias...");
             for (String categoria : categoriasInteresse) {
                 String routingKey = "promocao." + categoria;
                 channel.queueBind(clienteQueue, EXCHANGE_NAME, routingKey);
-                System.out.println("✓ Inscrito em: " + routingKey);
+                System.out.println("[INSCRITO] " + routingKey);
             }
 
             channel.basicQos(1);  // Process one message at a time
@@ -173,7 +190,7 @@ public class ClienteService {
                 try {
                     channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
                 } catch (Exception e) {
-                    System.err.println("Erro ao confirmar mensagem: " + e.getMessage());
+                    System.err.println("[ERRO] Falha ao confirmar mensagem: " + e.getMessage());
                 }
             };
 
@@ -182,7 +199,7 @@ public class ClienteService {
 
             return channel;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to establish RabbitMQ channel", e);
+            throw new RuntimeException("Falha ao estabelecer conexao com RabbitMQ", e);
         }
     }
 
@@ -208,7 +225,7 @@ public class ClienteService {
             }
             case 2 -> false;
             default -> {
-                System.out.println("❌ Opção inválida. Por favor, tente novamente.");
+                System.out.println(" Opção inválida. Por favor, tente novamente.");
                 yield true;
             }
         };
@@ -216,7 +233,7 @@ public class ClienteService {
 
     private void listarCategorias() {
         System.out.println("\n╔════════════════════════════════════════════════════╗");
-        System.out.println("║     CATEGORIAS DE INTERESSE DO CLIENTE              ║");
+        System.out.println("║        CATEGORIAS DE INTERESSE DO CLIENTE          ║");
         System.out.println("╠════════════════════════════════════════════════════╣");
 
         int index = 1;
@@ -226,20 +243,42 @@ public class ClienteService {
         }
 
         System.out.println("╚════════════════════════════════════════════════════╝");
-        System.out.println("\n✓ Total de categorias: " + categoriasInteresse.size());
+        System.out.println("\n Total de categorias: " + categoriasInteresse.size());
     }
 
-    private void exibirNotificacaoDestaque(String message) {
-        System.out.println("\n╔════════════════════════════════════════════════════╗");
-        System.out.println("║           🔥 PROMOÇÃO EM DESTAQUE 🔥              ║");
-        System.out.println("╠════════════════════════════════════════════════════╣");
-        System.out.println("║ " + padRight(message, 50) + "║");
-        System.out.println("╚════════════════════════════════════════════════════╝\n");
+    private void exibirNotificacaoDestaque(String message) throws JsonProcessingException {
+//        System.out.println("\n╔════════════════════════════════════════════════════╗");
+//        System.out.println("║                                         ║");
+//        System.out.println("╠════════════════════════════════════════════════════╣");
+//        System.out.println("║ " + padRight(message, 50) + "║");
+//        System.out.println("╚════════════════════════════════════════════════════╝\n");
+
+        Evento evento = objectMapper.readValue(message, Evento.class);
+        Promocao promocao = objectMapper.readValue(evento.getConteudo(), Promocao.class);
+
+        // Exibir mensagem formatada baseada no GatewayService
+        System.out.println("\n╔════════════════════════════════════╗");
+        System.out.println("║         PROMOÇÃO DESTAQUE          ║");
+        System.out.println("╠════════════════════════════════════╣");
+        System.out.println("║ Nome do produto: " + padRight(promocao.getNomeProduto(), 18) + "║");
+        System.out.println("║ Categoria: " + padRight(promocao.getCategoria(), 24) + "║");
+        System.out.println("║ Preço Original: R$ " + padRight(String.format("%.2f", promocao.getPrecoOriginal()), 16) + "║");
+        System.out.println("║ Preço Promocional: R$ " + padRight(String.format("%.2f", promocao.getPrecoPromocional()), 13) + "║");
+        double desconto = ((promocao.getPrecoOriginal() - promocao.getPrecoPromocional()) / promocao.getPrecoOriginal()) * 100;
+        System.out.println("║ Desconto: " + padRight(String.format("%.1f%%", desconto), 25) + "║");
+        System.out.println("╚════════════════════════════════════╝\n");
     }
 
     private void exibirNotificacaoCategoria(String message, String routingKey) {
         try {
-            Promocao promocao = objectMapper.readValue(message, Promocao.class);
+            Evento evento = objectMapper.readValue(message, Evento.class);
+            if (evento.getConteudo().equals("HOT DEAL")) {
+                System.out.println("\n╔════════════════════════════════════╗");
+                System.out.println("║         PROMOÇÃO HOT DEAL          ║");
+                System.out.println("╚════════════════════════════════════╝\n");
+                return;
+            }
+            Promocao promocao = objectMapper.readValue(evento.getConteudo(), Promocao.class);
 
             // Exibir mensagem formatada baseada no GatewayService
             System.out.println("\n╔════════════════════════════════════╗");
@@ -258,9 +297,8 @@ public class ClienteService {
             System.out.println("\n┌────────────────────────────────────────────────────┐");
             System.out.println("│           NOVA NOTIFICAÇÃO RECEBIDA                │");
             System.out.println("├────────────────────────────────────────────────────┤");
-            System.out.println("│ Tipo: " + padRight(routingKey, 40) + "│");
-            String msgPreview = message.substring(0, Math.min(36, message.length()));
-            System.out.println("│ Mensagem: " + padRight(msgPreview, 36) + "│");
+            System.out.println("│ Tipo: " + padRight(routingKey, 45) + "│");
+            System.out.println("│ Mensagem: " + message + "│");
             System.out.println("└────────────────────────────────────────────────────┘\n");
         }
     }

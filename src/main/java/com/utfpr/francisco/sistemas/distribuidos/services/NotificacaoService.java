@@ -48,8 +48,31 @@ public class NotificacaoService {
     }
 
     public void start() {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("║" + centerString("SERVICO DE NOTIFICACOES", 58) + "║");
+        System.out.println("║" + centerString("Processador de Eventos de Promocoes", 58) + "║");
+        System.out.println("║" + " ".repeat(58) + "║");
+        System.out.println("=".repeat(60));
+        System.out.println();
+        
         this.channel = getChannel();
-        System.out.println("NotificacaoService iniciado e aguardando eventos...");
+        
+        System.out.println();
+        System.out.println("├─ Status: OPERACIONAL");
+        System.out.println("├─ Fila: " + NOTIFICACAO_QUEUE);
+        System.out.println("├─ Exchange: " + EXCHANGE_NAME);
+        System.out.println("├─ Modo: Aguardando eventos de notificacao");
+        System.out.println("└─ Timestamp: " + java.time.LocalDateTime.now());
+        System.out.println();
+        System.out.println("Servico pronto para processar eventos...\n");
+    }
+    
+    private String centerString(String s, int size) {
+        if (s.length() >= size) return s;
+        int totalPadding = size - s.length();
+        int leftPadding = totalPadding / 2;
+        return " ".repeat(leftPadding) + s + " ".repeat(totalPadding - leftPadding);
     }
 
     private void processMessage(String message) throws Exception {
@@ -57,10 +80,10 @@ public class NotificacaoService {
 
         // Validar assinatura
         if (!validarAssinatura(evento)) {
-            System.err.println("❌ EVENTO REJEITADO: Assinatura inválida!");
+            System.err.println("[ERRO] EVENTO REJEITADO: Assinatura invalida!");
             return;
         }
-        System.out.println("✓ Assinatura válida! Processando evento...");
+        System.out.println("[VALIDADO] Assinatura do produtor: " + evento.getProdutor());
 
         Promocao promocao = objectMapper.readValue(evento.getConteudo(), Promocao.class);
 
@@ -73,26 +96,25 @@ public class NotificacaoService {
     }
 
     private void processarPromocaoPublicada(Promocao promocao) throws Exception {
-        System.out.println("📢 Processando promoção publicada: " + promocao.getNomeProduto());
+        System.out.println("[PROCESAR] Promocao publicada recebida: " + promocao.getNomeProduto());
 
         // Publicar notificação na categoria correspondente
         String categoriaRoutingKey = "promocao." + promocao.getCategoria().toLowerCase().replace(" ", "");
-        String notificacaoConteudo = String.format("{\"mensagem\":\"Nova promoção disponível\", \"promocao\":\"%s\", \"categoria\":\"%s\"}",
-                promocao.getNomeProduto(), promocao.getCategoria());
+        String notificacaoConteudo = objectMapper.writeValueAsString(promocao);
 
         publicarNotificacao(categoriaRoutingKey, notificacaoConteudo);
-        System.out.println("✓ Notificação de promoção publicada enviada para categoria: " + promocao.getCategoria());
+        System.out.println("[PUBLICADO] Categoria: " + promocao.getCategoria());
     }
 
     private void processarPromocaoDestaque(Promocao promocao) throws Exception {
-        System.out.println("🔥 Processando promoção em destaque: " + promocao.getNomeProduto());
+        System.out.println("[DESTAQUE] Promocao em destaque recebida: " + promocao.getNomeProduto());
 
         // Publicar notificação "hot deal" na categoria correspondente
         String categoriaRoutingKey = "promocao." + promocao.getCategoria().toLowerCase().replace(" ", "");
-        String notificacaoConteudo = "HOT DEAL!";
+        String notificacaoConteudo = "HOT DEAL";
 
         publicarNotificacao(categoriaRoutingKey, notificacaoConteudo);
-        System.out.println("✓ Notificação 'hot deal' enviada para categoria: " + promocao.getCategoria());
+        System.out.println("[PUBLICADO] Hot deal para categoria: " + promocao.getCategoria());
     }
 
     private void publicarNotificacao(String routingKey, String conteudo) throws Exception {
@@ -102,7 +124,7 @@ public class NotificacaoService {
 
         // Publicar no exchange
         channel.basicPublish(EXCHANGE_NAME, routingKey, null, eventoJson.getBytes(StandardCharsets.UTF_8));
-        System.out.println("✓ Notificação assinada e publicada: " + routingKey);
+        System.out.println("[ENVIADO] Evento: " + routingKey);
     }
 
     /**
@@ -116,16 +138,14 @@ public class NotificacaoService {
             // Validar a assinatura
             boolean isValid = CryptoUtil.verify(evento.getConteudo(), evento.getAssinatura(), publicKey);
 
-            if (isValid) {
-                System.out.println("✓ Assinatura válida do produtor: " + evento.getProdutor());
-            } else {
-                System.err.println("❌ Assinatura inválida do produtor: " + evento.getProdutor());
+            if (!isValid) {
+                System.err.println("[ERRO] Assinatura invalida do produtor: " + evento.getProdutor());
             }
 
             return isValid;
 
         } catch (Exception e) {
-            System.err.println("❌ Erro ao validar assinatura: " + e.getMessage());
+            System.err.println("[ERRO] Falha ao validar assinatura: " + e.getMessage());
             return false;
         }
     }
