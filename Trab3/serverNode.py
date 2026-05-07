@@ -1,12 +1,12 @@
-import Pyro5.api
+import Pyro5.api # type: ignore
 import sys
 import threading
 import random
 import time
 from enum import Enum
 
-from rich.console import Console
-from rich.progress import Progress, BarColumn, TextColumn
+from rich.console import Console # type: ignore
+from rich.progress import Progress, BarColumn, TextColumn # type: ignore
 
 # Console do Rich para prints coloridos
 console = Console()
@@ -20,11 +20,11 @@ NODES_CONFIG = {
 }
 
 # Constantes de timeout (em segundos)
-ELECTION_TIMEOUT_MIN = 10
-ELECTION_TIMEOUT_MAX = 30
+ELECTION_TIMEOUT_MIN = 5
+ELECTION_TIMEOUT_MAX = 15
 HEARTBEAT_INTERVAL = 1
 PEER_REQUEST_TIMEOUT = 0.2
-PEER_HEARTBEAT_TIMEOUT = 0.5
+PEER_HEARTBEAT_TIMEOUT = 0.3
 
 
 class RaftState(Enum):
@@ -37,7 +37,6 @@ class LogEntry:
         self.term = term
         self.command = command
 
-@Pyro5.api.expose
 class RaftNode:
     """Implementação de um nó Raft com eleição de líder e heartbeats."""
     
@@ -165,11 +164,16 @@ class RaftNode:
         console.print(f"\n[bold red][!] TIMEOUT ATINGIDO![/bold red]")
         self.solicitar_votos()
 
-    def _processar_heartbeat_como_leader(self):
-        """Processa envio de heartbeats quando é líder."""
-        console.print(f"\n[bold blue][>] Enviando heartbeats regulares...[/bold blue]")
-        self.send_heartbeat()
-        self.resetar_timeout()
+    def _loop_heartbeat(self):
+        """Executa em uma thread separada enviando heartbeats continuamente enquanto for líder."""
+        console.print(f"\n[bold blue][>] Thread exclusiva de heartbeats iniciada![/bold blue]")
+        
+        while self.state == RaftState.LEADER.value:
+            self.send_heartbeat()
+            self.resetar_timeout()  # Atualiza o tempo para a barra de progresso não quebrar
+            time.sleep(HEARTBEAT_INTERVAL)
+            
+        console.print(f"\n[yellow][!] O nó {self.node_label} deixou de ser Leader. Encerrando thread de heartbeats.[/yellow]")
 
     def loop_eleicao(self):
         """Loop principal que monitora timeouts e gerencia eleições."""
@@ -199,9 +203,9 @@ class RaftNode:
                         progress.reset(task_id, total=self.timeout)
                 
                 elif self.state == RaftState.LEADER.value:
-                    if decorrido > HEARTBEAT_INTERVAL:
-                        self._processar_heartbeat_como_leader()
+                    if decorrido > self.timeout:
                         progress.reset(task_id, total=self.timeout)
+                        self.resetar_timeout()
 
     def _registrar_no_nameserver(self):
         """Tenta registrar o nó como líder no nameserver."""
@@ -217,16 +221,16 @@ class RaftNode:
         self.state = RaftState.LEADER.value
         console.print(f"\n[bold yellow on blue] *** NÓ {self.node_label} VENCEU A ELEIÇÃO E AGORA É O Leader! *** [/bold yellow on blue]\n")
         
+        # Inicia thread de heartbeat exclusiva para líderes
+        threading.Thread(target=self._loop_heartbeat, daemon=True).start()
         self._registrar_no_nameserver()
-        self.send_heartbeat()
-        self.resetar_timeout()
 
+    @Pyro5.api.expose
     @Pyro5.api.oneway
     def heartbeat(self, term, leaderId, prevLogIndex, prevLogTerm, leaderCommit):
         """Processa heartbeat recebido do líder."""
-        console.print(f"[blue][<] Recebido heartbeat de {leaderId} (Termo {term})[/blue]")
+        #console.print(f"[blue][<] Recebido heartbeat de {leaderId} (Termo {term})[/blue]")
 
-        # Apenas mostra log se mudar de Leader ou se o termo atualizar, para não flodar a tela
         if term > self.term or self.state != RaftState.FOLLOWER.value:
             console.print(f"[bold green][+] Reconhecendo {leaderId} como novo Leader (Termo {term})[/bold green]")
         
@@ -248,10 +252,12 @@ class RaftNode:
         for label, uri in self.peers.items():
             try:
                 with Pyro5.api.Proxy(uri) as proxy:
-                    console.print(f"[blue][>] Enviando heartbeat para {label}...[/blue]")
+                    #console.print(f"[blue][>] Enviando heartbeat para {label}...[/blue]")
                     proxy._pyroTimeout = PEER_HEARTBEAT_TIMEOUT
                     proxy.heartbeat(self.term, self.node_label, prev_log_index, prev_log_term, self.commitIndex)
-            except Exception:
+            except Exception as e:
+                #console.print(f"[red][!] Falha ao enviar heartbeat para {label}.[/red]")
+                #console.print(f"[red][!] Erro: {e}[/red]")
                 pass
 
 def _exibir_menu_inicial():

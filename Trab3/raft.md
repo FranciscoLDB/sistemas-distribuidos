@@ -102,3 +102,7 @@ decrement nextIndex and retry (§5.3)
 - If there exists an N such that N > commitIndex, a majority
 of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 set commitIndex = N (§5.3, §5.4).
+
+# Comments
+If the prev_index in the replica is less then prev_index of leader, 
+the leader must send the replica lost log
