@@ -1,25 +1,33 @@
 import Pyro5.api # type: ignore
-import time
 from rich.console import Console # type: ignore
 
 console = Console()
 
-def conectar_lider():
-    """Busca o líder no serviço de nomes do PyRO."""
+NAME_SERVER_HOST = "localhost"
+NAME_SERVER_PORT = 9090
+
+def enviar_comando_direto(comando):
+    """Conecta no Name Server, pega o líder e envia."""
     try:
-        # Localiza o Name Server na rede local
-        ns = Pyro5.api.locate_ns()
+        # 1. Conecta ao Name Server
+        ns = Pyro5.api.locate_ns(host=NAME_SERVER_HOST, port=NAME_SERVER_PORT)
         
-        # Pesquisa o URI do líder que foi registrado pelo servidor
+        # 2. Pega a URI do líder atual
         uri = ns.lookup("raft.leader")
-        return Pyro5.api.Proxy(uri)
         
+        # 3. Conecta no líder, envia o comando e fecha a conexão
+        with Pyro5.api.Proxy(uri) as lider:
+            resposta = lider.receber_comando(comando)
+            return resposta
+            
     except Pyro5.errors.NamingError:
-        console.print("[yellow][!] Nenhum líder encontrado no Name Server. Aguardando eleição...[/yellow]")
-        return None
+        return "[yellow][!] Nenhum líder registrado no Name Server no momento.[/yellow]"
+    except Pyro5.errors.CommunicationError:
+        return "[bold red][!] Falha de comunicação com o Líder ou Name Server.[/bold red]"
+    except AttributeError:
+        return "[bold red][!] Método 'receber_comando' não implementado no servidor![/bold red]"
     except Exception as e:
-        console.print(f"[bold red][X] Erro ao conectar com o Name Server: {e}[/bold red]")
-        return None
+        return f"[bold red][X] Erro: {e}[/bold red]"
 
 def iniciar_cliente():
     console.print("[bold blue]=======================================================[/bold blue]")
@@ -36,19 +44,13 @@ def iniciar_cliente():
             if not comando.strip():
                 continue
 
-            lider = conectar_lider()
+            console.print(f"[cyan][>] Enviando comando...[/cyan]")
             
-            if lider:
-                console.print(f"[cyan][>] Enviando comando para o líder...[/cyan]")
-                
-                # Invoca o método no líder
-                resposta = lider.receber_comando(comando)
-                console.print(f"[bold green][V] Resposta do líder:[/bold green] {resposta}\n")
-                
-        except Pyro5.errors.CommunicationError:
-            console.print("[bold red][!] Falha de comunicação. O líder atual pode ter falhado. O cluster fará uma nova eleição.[/bold red]\n")
-        except AttributeError:
-             console.print("[bold red][!] O líder foi encontrado, mas falta implementar o método 'receber_comando' na classe RaftNode do servidor![/bold red]\n")
+            # Envia e já recebe a resposta na hora
+            resposta = enviar_comando_direto(comando)
+            
+            console.print(f"[bold green][V] Resposta do líder:[/bold green] {resposta}\n")
+            
         except KeyboardInterrupt:
             console.print("\n[cyan]Encerrando cliente...[/cyan]")
             break
