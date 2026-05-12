@@ -127,9 +127,9 @@ class RaftNode:
 
     def solicitar_votos(self):
         """Inicia eleição solicitando votos de todos os peers."""
-        console.print(f"\n[bold magenta][*] Iniciando eleição para termo {self.term}...[/bold magenta]")
         self.resetar_timeout()
         self.term += 1
+        console.print(f"\n[bold magenta][*] Iniciando eleição para termo {self.term}...[/bold magenta]")
         
         votos_recebidos = self._contar_votos()
         self._verificar_vitoria_eleicao(votos_recebidos)
@@ -155,9 +155,20 @@ class RaftNode:
             return "yellow"
 
     def _construir_descricao_progresso(self, decorrido):
-        """Constrói descrição formatada para a barra de progresso."""
+        """Constrói descrição formatada para a barra de progresso em duas linhas."""
         color = self._calcular_cor_estado()
-        return f"[{color}]Estado: {self.state:<9}[/{color}] | Termo: {self.term} | Timeout: {self.timeout:.1f}s"
+        
+        # Extrai apenas a string do comando de cada entrada do log para exibição visual
+        comandos_log = [entrada.command for entrada in self.log]
+        
+        # Monta a primeira linha com dados do nó e do temporizador
+        linha1 = f"[{color}]Estado: {self.state:<9}[/{color}] | Termo: {self.term} | Timeout: {self.timeout:.1f}s"
+        
+        # Monta a segunda linha com dados de consenso e replicação
+        linha2 = f"Commit: {self.commitIndex} | Log: {comandos_log}"
+        
+        # Retorna unindo as duas com uma quebra de linha
+        return f"{linha1}\n{linha2}"
 
     def _processar_timeout_eleicao(self):
         """Processa timeout de eleição quando é follower."""
@@ -224,20 +235,47 @@ class RaftNode:
         # Inicia thread de heartbeat exclusiva para líderes
         threading.Thread(target=self._loop_heartbeat, daemon=True).start()
         self._registrar_no_nameserver()
-
+        
     @Pyro5.api.expose
-    @Pyro5.api.oneway
-    def heartbeat(self, term, leaderId, prevLogIndex, prevLogTerm, leaderCommit):
-        """Processa heartbeat recebido do líder."""
-        #console.print(f"[blue][<] Recebido heartbeat de {leaderId} (Termo {term})[/blue]")
+    def append_entries(self, term, leaderId, prevLogIndex, prevLogTerm, entries, leaderCommit):
+        """Processa append entries RPC recebido do líder."""
+        #console.print(f"[blue][<] Recebido append entries de {leaderId} (Termo {term})[/blue]")
 
-        if term > self.term or self.state != RaftState.FOLLOWER.value:
-            console.print(f"[bold green][+] Reconhecendo {leaderId} como novo Leader (Termo {term})[/bold green]")
+        #Receiver implementation:
+        #1. Reply false if term < currentTerm (§5.1)
+        #2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
+        #3. If an existing entry conflicts with a new one (same index but different terms), 
+        #   delete the existing entry and all that follow it (§5.3)
+        #4. Append any new entries not already in the log
+        #5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
+
+        if term < self.term:
+            return False
+        
+        if prevLogIndex >= 0:
+            if prevLogIndex >= len(self.log) or self.log[prevLogIndex].term != prevLogTerm:
+                return False
+        
+        entradas_obj = [LogEntry(e["term"], e["command"]) if isinstance(e, dict) else e for e in entries]
+        for i, entry in enumerate(entradas_obj):
+            index = prevLogIndex + 1 + i
+            if index < len(self.log):
+                if self.log[index].term != entry.term:
+                    self.log = self.log[:index]  # Remove entradas conflitantes
+                    break
+            else:
+                break
+
+        self.log.extend(entradas_obj)  # Anexa novas entradas
+
+        if leaderCommit > self.commitIndex:
+            self.commitIndex = min(leaderCommit, len(self.log) - 1)
         
         self.resetar_timeout()
         if term >= self.term:
             self.term = term
             self.state = RaftState.FOLLOWER.value
+        return True
 
     def _calcular_info_log(self):
         """Calcula prevLogIndex e prevLogTerm baseado no log."""
@@ -254,11 +292,52 @@ class RaftNode:
                 with Pyro5.api.Proxy(uri) as proxy:
                     #console.print(f"[blue][>] Enviando heartbeat para {label}...[/blue]")
                     proxy._pyroTimeout = PEER_HEARTBEAT_TIMEOUT
-                    proxy.heartbeat(self.term, self.node_label, prev_log_index, prev_log_term, self.commitIndex)
+                    proxy.append_entries(self.term, self.node_label, prev_log_index, prev_log_term, [], self.commitIndex)
             except Exception as e:
                 #console.print(f"[red][!] Falha ao enviar heartbeat para {label}.[/red]")
                 #console.print(f"[red][!] Erro: {e}[/red]")
                 pass
+
+    def send_append_entries(self, command):
+        """Envia AppendEntries RPC para replicar comando aos seguidores."""
+        confirmacoes = 1
+        
+        for label, uri in self.peers.items():
+            try:
+                with Pyro5.api.Proxy(uri) as proxy:
+                    proxy._pyroTimeout = PEER_REQUEST_TIMEOUT
+                    prev_log_index, prev_log_term = self._calcular_info_log()
+                    nova_entrada_dict = {"term": self.term, "command": command}
+                    proxy.append_entries(self.term, self.node_label, prev_log_index, prev_log_term, [nova_entrada_dict], self.commitIndex)
+                    confirmacoes += 1
+                    console.print(f"[green][OK] Comando replicado para {label}[/green]")
+            except Exception as e:
+                console.print(f"[red][!] Falha ao replicar comando para {label}.[/red]")
+                console.print(f"[red][!] Erro: {e}[/red]")
+        return confirmacoes
+
+    @Pyro5.api.expose
+    def receber_comando(self, comando):
+        """Recebe o comando do cliente e anexa ao log (se for líder)."""
+
+        console.print(f"\n[cyan][>] Comando recebido do cliente: '{comando}'[/cyan]")
+        
+        # Cria e anexa a entrada no log do líder
+        nova_entrada = LogEntry(self.term, comando)
+        self.log.append(nova_entrada)
+        
+        # TODO: Implementar a lógica de envio (AppendEntries RPC) para replicar aos seguidores 
+        # e efetivar (commit) apenas se a maioria confirmar.
+        if self.state == RaftState.LEADER.value:
+            console.print(f"[green][OK] Comando anexado ao log do líder. Iniciando replicação...[/green]")
+            confirmacoes = self.send_append_entries(comando)
+            console.print(f"[green][OK] Comando replicado para {confirmacoes} dos {len(self.peers) + 1} nós.[/green]")
+
+            if confirmacoes > len(NODES_CONFIG) // 2:
+                self.commitIndex += 1
+                console.print(f"[green][COMMIT] Comando '{comando}' efetivado no índice {self.commitIndex} do log.[/green]")
+        
+        return f"Comando '{comando}' recebido com sucesso no termo {self.term} (Índice do Log: {len(self.log) - 1}). Aguardando replicação..."
 
 def _exibir_menu_inicial():
     """Exibe menu de seleção de nó."""
@@ -267,7 +346,6 @@ def _exibir_menu_inicial():
     for label, info in NODES_CONFIG.items():
         console.print(f"  [bold white][{label}][/bold white] - Porta {info['port']}")
     console.print("[bold cyan]================================[/bold cyan]\n")
-
 
 def _obter_escolha_usuario():
     """Obtém e valida escolha do usuário. Retorna a letra escolhida ou None se inválida."""
@@ -279,7 +357,6 @@ def _obter_escolha_usuario():
         return None
     
     return escolha
-
 
 def _iniciar_node_com_daemon(escolha):
     """Cria daemon, registra nó e inicia threads necessárias."""
@@ -294,7 +371,6 @@ def _iniciar_node_com_daemon(escolha):
     thread_eleicao.start()
     
     return daemon
-
 
 def iniciar_servidor():
     """Função principal para iniciar o servidor Raft."""
