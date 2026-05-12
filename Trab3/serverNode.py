@@ -239,42 +239,64 @@ class RaftNode:
     @Pyro5.api.expose
     def append_entries(self, term, leaderId, prevLogIndex, prevLogTerm, entries, leaderCommit):
         """Processa append entries RPC recebido do líder."""
-        #console.print(f"[blue][<] Recebido append entries de {leaderId} (Termo {term})[/blue]")
-
-        #Receiver implementation:
-        #1. Reply false if term < currentTerm (§5.1)
-        #2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
-        #3. If an existing entry conflicts with a new one (same index but different terms), 
-        #   delete the existing entry and all that follow it (§5.3)
-        #4. Append any new entries not already in the log
-        #5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
-
-        if term < self.term:
-            return False
-        
-        if prevLogIndex >= 0:
-            if prevLogIndex >= len(self.log) or self.log[prevLogIndex].term != prevLogTerm:
-                return False
-        
-        entradas_obj = [LogEntry(e["term"], e["command"]) if isinstance(e, dict) else e for e in entries]
-        for i, entry in enumerate(entradas_obj):
-            index = prevLogIndex + 1 + i
-            if index < len(self.log):
-                if self.log[index].term != entry.term:
-                    self.log = self.log[:index]  # Remove entradas conflitantes
-                    break
-            else:
-                break
-
-        self.log.extend(entradas_obj)  # Anexa novas entradas
-
-        if leaderCommit > self.commitIndex:
-            self.commitIndex = min(leaderCommit, len(self.log) - 1)
-        
         self.resetar_timeout()
         if term >= self.term:
             self.term = term
             self.state = RaftState.FOLLOWER.value
+
+        # Log Inicial mostrando o que chegou
+        qtd_entradas = len(entries)
+        if qtd_entradas > 0:
+            console.print(f"\n[cyan][<] AppendEntries recebido de {leaderId} | Termo: {term} | PrevLogIndex: {prevLogIndex} | Novas Entradas: {qtd_entradas}[/cyan]")
+        
+        # 1. Reply false if term < currentTerm (§5.1)
+        if term < self.term:
+            console.print(f"[yellow][!] Rejeitado: O termo do líder ({term}) é menor que o meu termo atual ({self.term}).[/yellow]")
+            return False
+        
+        # 2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
+        if prevLogIndex >= 0:
+            if prevLogIndex >= len(self.log):
+                console.print(f"[yellow][!] Rejeitado: O prevLogIndex ({prevLogIndex}) é maior que o tamanho do meu log ({len(self.log) - 1}). Faltam entradas.[/yellow]")
+                return False
+            if self.log[prevLogIndex].term != prevLogTerm:
+                console.print(f"[yellow][!] Rejeitado: O termo no índice {prevLogIndex} ({self.log[prevLogIndex].term}) não bate com o prevLogTerm ({prevLogTerm}) enviado pelo líder.[/yellow]")
+                return False
+        
+        # Converte dicionários para objetos LogEntry (se aplicável)
+        entradas_obj = [LogEntry(e["term"], e["command"]) if isinstance(e, dict) else e for e in entries]
+        
+        # 3 e 4. Procurar conflitos e anexar apenas as novas entradas
+        novas_entradas_iniciar_em = 0
+        for i, entry in enumerate(entradas_obj):
+            index = prevLogIndex + 1 + i
+            if index < len(self.log):
+                if self.log[index].term != entry.term:
+                    # Conflito encontrado: apaga o log deste índice em diante
+                    console.print(f"[bold red][!] Conflito no índice {index}! Removendo entradas antigas do log a partir daqui...[/bold red]")
+                    self.log = self.log[:index]
+                    break
+            else:
+                # Fim do log atual atingido. A partir daqui, as entradas em 'entradas_obj' são novas.
+                novas_entradas_iniciar_em = i
+                break
+        else:
+            # Se o for terminar sem acionar nenhum break, significa que todas as entradas enviadas já existem no log perfeitamente.
+            novas_entradas_iniciar_em = len(entradas_obj)
+
+        entradas_para_adicionar = entradas_obj[novas_entradas_iniciar_em:]
+        
+        if entradas_para_adicionar:
+            self.log.extend(entradas_para_adicionar)
+            console.print(f"[green][+] Anexadas {len(entradas_para_adicionar)} nova(s) entrada(s). Tamanho atual do log: {len(self.log)}[/green]")
+
+        # 5. If leaderCommit > commitIndex, set commitIndex = min(...)
+        if leaderCommit > self.commitIndex:
+            novo_commit = min(leaderCommit, len(self.log) - 1)
+            if novo_commit > self.commitIndex:
+                console.print(f"[magenta][^] Commit Index avançou de {self.commitIndex} para {novo_commit}[/magenta]")
+            self.commitIndex = novo_commit
+            
         return True
 
     def _calcular_info_log(self):
@@ -319,25 +341,47 @@ class RaftNode:
     @Pyro5.api.expose
     def receber_comando(self, comando):
         """Recebe o comando do cliente e anexa ao log (se for líder)."""
-
         console.print(f"\n[cyan][>] Comando recebido do cliente: '{comando}'[/cyan]")
         
-        # Cria e anexa a entrada no log do líder
-        nova_entrada = LogEntry(self.term, comando)
-        self.log.append(nova_entrada)
+        # 1. O Líder anexa ao seu próprio log
+        nova_entrada = {"term": self.term, "command": comando}
+        self.log.append(LogEntry(nova_entrada["term"], nova_entrada["command"]))
+        indice_atual = len(self.log) - 1
         
-        # TODO: Implementar a lógica de envio (AppendEntries RPC) para replicar aos seguidores 
-        # e efetivar (commit) apenas se a maioria confirmar.
-        if self.state == RaftState.LEADER.value:
-            console.print(f"[green][OK] Comando anexado ao log do líder. Iniciando replicação...[/green]")
-            confirmacoes = self.send_append_entries(comando)
-            console.print(f"[green][OK] Comando replicado para {confirmacoes} dos {len(self.peers) + 1} nós.[/green]")
-
-            if confirmacoes > len(NODES_CONFIG) // 2:
-                self.commitIndex += 1
-                console.print(f"[green][COMMIT] Comando '{comando}' efetivado no índice {self.commitIndex} do log.[/green]")
+        # 2. O Líder conta a si mesmo como 1 confirmação
+        confirmacoes = 1 
         
-        return f"Comando '{comando}' recebido com sucesso no termo {self.term} (Índice do Log: {len(self.log) - 1}). Aguardando replicação..."
+        # 3. Dispara o AppendEntries para os seguidores
+        console.print(f"[cyan][>] Tentando replicar índice {indice_atual} para seguidores...[/cyan]")
+        for label, uri in self.peers.items():
+            try:
+                with Pyro5.api.Proxy(uri) as proxy:
+                    proxy._pyroTimeout = PEER_REQUEST_TIMEOUT
+                    prev_log_index = indice_atual - 1
+                    prev_log_term = self.log[prev_log_index].term if prev_log_index >= 0 else 0
+                    
+                    sucesso = proxy.append_entries(
+                        self.term, self.node_label, prev_log_index, prev_log_term, 
+                        [nova_entrada], self.commitIndex # Envia o commitIndex atual do líder
+                    )
+                    
+                    if sucesso:
+                        confirmacoes += 1
+                        console.print(f"[green]  + {label} confirmou gravação.[/green]")
+            except Exception:
+                console.print(f"[red]  - Falha de conexão com {label}[/red]")
+                
+        # 4. Regra de Commit do Raft (§5.3): Confirmado pela maioria?
+        total_nos = len(self.peers) + 1 # Seguidores + O próprio líder
+        maioria = (total_nos // 2) + 1
+        
+        if confirmacoes >= maioria:
+            # Líder efetiva (commita) no próprio estado
+            self.commitIndex = indice_atual
+            console.print(f"[magenta][^] QUÓRUM ATINGIDO! Líder efetivou Commit no índice {self.commitIndex}[/magenta]")
+            return f"Sucesso! Comando '{comando}' replicado em {confirmacoes}/{total_nos} nós e comitado."
+        else:
+            return f"Aviso: Comando salvo no líder, mas obteve apenas {confirmacoes}/{total_nos} confirmações. Aguardando volta dos nós para comitar."
 
 def _exibir_menu_inicial():
     """Exibe menu de seleção de nó."""
