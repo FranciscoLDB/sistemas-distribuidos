@@ -56,8 +56,8 @@ class RaftNode:
         self.log = []
 
         # --- Estado Volátil Geral (Raft) ---
-        self.commitIndex = -1 # Começa em -1 indicando que nenhum índice foi comitado
-        self.lastApplied = -1
+        self.commitIndex = 0 # Começa em 0 indicando que nenhum índice foi comitado
+        self.lastApplied = 0
 
         # --- Estado Volátil do Líder (Raft) ---
         self.nextIndex = {}
@@ -255,6 +255,47 @@ class RaftNode:
     # =========================================================================
     # BLOCO 4: EXPOSIÇÃO RPC (O QUE VEM DE FORA PELA REDE É RECEBIDO AQUI)
     # =========================================================================
+
+    @Pyro5.api.expose
+    def request_vote(self, candidate_term, candidate_id, last_log_index, last_log_term):
+        """
+        Processa requisição de voto vinda de outro nó candidato.
+        Implementa a seção §5.2 e §5.4 do paper do Raft.
+        """
+        
+        # 1. Se o termo do candidato é menor que o meu, recuso na hora.
+        if candidate_term < self.term:
+            return self.term, False
+
+        # Se o termo recebido é maior, eu atualizo meu termo e viro seguidor
+        if candidate_term > self.term:
+            self.term = candidate_term
+            self.state = RaftState.FOLLOWER.value
+            self.votedFor = None # Reseta o voto para o novo termo
+
+        # 2. Verificação de Segurança do Log (§5.4.1)
+        # Um log é considerado mais atualizado se:
+        # a) O último termo do log do candidato for maior que o meu.
+        # b) Os termos forem iguais, mas o candidato tiver um log maior ou igual ao meu.
+        
+        meu_ultimo_indice = len(self.log) - 1
+        meu_ultimo_termo = self.log[meu_ultimo_indice].term if meu_ultimo_indice >= 0 else 0
+        
+        log_ok = (last_log_term > meu_ultimo_termo) or \
+                (last_log_term == meu_ultimo_termo and last_log_index >= meu_ultimo_indice)
+
+        # 3. Decisão de Voto
+        # Só voto se eu ainda não votei em ninguém (votedFor is None ou o próprio candidato)
+        # E se o log do candidato for confiável (log_ok).
+        if (self.votedFor is None or self.votedFor == candidate_id) and log_ok:
+            self.votedFor = candidate_id
+            self._resetar_timeout() # Reseta o timer de eleição pois reconheci um candidato válido
+            
+            console.print(f"[cyan][V] Voto concedido ao Nó {candidate_id} para o termo {candidate_term}[/cyan]")
+            return self.term, True
+    
+        # Caso contrário, recuso o voto
+        return self.term, False
 
     @Pyro5.api.expose
     def request_vote(self, candidate_term):
