@@ -222,7 +222,7 @@ class RaftNode:
                         self.matchIndex[label] = self.nextIndex[label] - 1
                         console.print(f"[green][+] Nó {label} atualizado com sucesso até o log {self.matchIndex[label]}[/green]")
                         
-                        # Verifica se já dá para bater o martelo (Commit)
+                        # Verifica se pode commitar
                         self._atualizar_commit_index() 
                 else:
                     # Se rejeitou, volta o nextIndex um passo para trás para sincronizar depois

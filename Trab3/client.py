@@ -23,7 +23,7 @@ def _enviar_comando_direto(comando):
     envia o comando e encerra a conexão. Tudo em um único fluxo (Stateless).
     """
     try:
-        # 1. Conecta ao Name Server de forma direta (sem delay de broadcast)
+        # 1. Conecta ao Name Server
         ns = Pyro5.api.locate_ns(host=NAME_SERVER_HOST, port=NAME_SERVER_PORT)
         
         # 2. Pergunta ao Name Server qual é a URI do líder atual do cluster
@@ -63,7 +63,7 @@ def iniciar_cliente():
             # Captura a mensagem digitada no terminal
             comando = input("Digite o comando para enviar ao log (ou 'sair' para encerrar): ")
             
-            # Condição de saída graciosa
+            # Condição de saída
             if comando.lower() == 'sair':
                 console.print("[cyan]Encerrando cliente...[/cyan]")
                 break
