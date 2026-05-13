@@ -55,8 +55,8 @@ class RaftNode:
         self.log = []
 
         # Volatile state on all servers
-        self.commitIndex = 0
-        self.lastApplied = 0
+        self.commitIndex = -1 # Começa em -1 indicando que nenhum índice foi comitado
+        self.lastApplied = -1
 
         # Volatile state on leaders
         self.nextIndex = {}
@@ -175,17 +175,6 @@ class RaftNode:
         console.print(f"\n[bold red][!] TIMEOUT ATINGIDO![/bold red]")
         self.solicitar_votos()
 
-    def _loop_heartbeat(self):
-        """Executa em uma thread separada enviando heartbeats continuamente enquanto for líder."""
-        console.print(f"\n[bold blue][>] Thread exclusiva de heartbeats iniciada![/bold blue]")
-        
-        while self.state == RaftState.LEADER.value:
-            self.send_heartbeat()
-            self.resetar_timeout()  # Atualiza o tempo para a barra de progresso não quebrar
-            time.sleep(HEARTBEAT_INTERVAL)
-            
-        console.print(f"\n[yellow][!] O nó {self.node_label} deixou de ser Leader. Encerrando thread de heartbeats.[/yellow]")
-
     def loop_eleicao(self):
         """Loop principal que monitora timeouts e gerencia eleições."""
         with Progress(
@@ -230,12 +219,91 @@ class RaftNode:
     def tornar_se_lider(self):
         """Transição do nó para estado de líder."""
         self.state = RaftState.LEADER.value
+        
+        # Inicializa variáveis de acompanhamento do log para cada seguidor (§5.3)
+        self.nextIndex = {label: len(self.log) for label in self.peers}
+        self.matchIndex = {label: -1 for label in self.peers}
+
         console.print(f"\n[bold yellow on blue] *** NÓ {self.node_label} VENCEU A ELEIÇÃO E AGORA É O Leader! *** [/bold yellow on blue]\n")
         
         # Inicia thread de heartbeat exclusiva para líderes
         threading.Thread(target=self._loop_heartbeat, daemon=True).start()
         self._registrar_no_nameserver()
         
+    def _atualizar_commit_index(self):
+        """Raft §5.3: Verifica se uma entrada foi replicada na maioria e avança o commitIndex."""
+        # Pega todos os matchIndexes e adiciona o log do próprio líder (que é len(self.log) - 1)
+        todos_indices = list(self.matchIndex.values())
+        todos_indices.append(len(self.log) - 1)
+        
+        # Ordena de forma decrescente para achar a mediana
+        todos_indices.sort(reverse=True)
+        
+        # O índice que a maioria atingiu estará exatamente no meio do vetor ordenado
+        maioria_idx = len(NODES_CONFIG) // 2
+        N = todos_indices[maioria_idx]
+        
+        # Regra do Raft: Só commita se N > commitIndex e a entrada N é do termo atual
+        if N > self.commitIndex and N >= 0 and self.log[N].term == self.term:
+            self.commitIndex = N
+            console.print(f"[magenta][^] QUÓRUM ATINGIDO! Commit Index avançou para {self.commitIndex}[/magenta]")
+
+    def _sincronizar_peer(self, label, uri):
+        """Envia heartbeats e sincroniza nós defasados usando o nextIndex."""
+        try:
+            with Pyro5.api.Proxy(uri) as proxy:
+                proxy._pyroTimeout = PEER_HEARTBEAT_TIMEOUT
+                
+                # 1. Pega o nextIndex que o líder acha que este peer tem
+                next_idx = self.nextIndex.get(label, len(self.log))
+                
+                # 2. Calcula os parâmetros de consistência
+                prev_log_index = next_idx - 1
+                prev_log_term = self.log[prev_log_index].term if prev_log_index >= 0 else 0
+                
+                # 3. Pega todas as entradas a partir do next_idx (enviando como dicionários)
+                entradas_para_enviar = [{"term": e.term, "command": e.command} for e in self.log[next_idx:]]
+                
+                # 4. Dispara o RPC AppendEntries
+                sucesso = proxy.append_entries(
+                    self.term, self.node_label, prev_log_index, prev_log_term, 
+                    entradas_para_enviar, self.commitIndex
+                )
+                
+                # 5. Avalia a resposta do seguidor
+                if sucesso:
+                    if entradas_para_enviar:
+                        # O seguidor aceitou os logs atrasados! Atualiza os dicionários.
+                        self.nextIndex[label] = next_idx + len(entradas_para_enviar)
+                        self.matchIndex[label] = self.nextIndex[label] - 1
+                        console.print(f"[green][+] Nó {label} atualizado com sucesso até o log {self.matchIndex[label]}[/green]")
+                        
+                        # Tenta comitar caso essa atualização atinja a maioria
+                        self._atualizar_commit_index() 
+                else:
+                    # REJEIÇÃO! O seguidor não tem o prevLogIndex. 
+                    # Reduz o nextIndex para dar um passo para trás na próxima tentativa.
+                    novo_next_idx = max(0, next_idx - 1)
+                    self.nextIndex[label] = novo_next_idx
+                    
+        except Exception:
+            # Nó offline. O nextIndex fica congelado esperando ele voltar.
+            pass
+
+    def _loop_heartbeat(self):
+        """Executa em uma thread separada enviando heartbeats/sincronizações continuamente."""
+        console.print(f"\n[bold blue][>] Thread de sincronização do Líder iniciada![/bold blue]")
+        
+        while self.state == RaftState.LEADER.value:
+            for label, uri in self.peers.items():
+                # Usa threads separadas para não travar o líder se um nó estiver lento
+                threading.Thread(target=self._sincronizar_peer, args=(label, uri), daemon=True).start()
+            
+            self.resetar_timeout()
+            time.sleep(HEARTBEAT_INTERVAL)
+            
+        console.print(f"\n[yellow][!] O nó {self.node_label} deixou de ser Leader. Encerrando thread de sincronização.[/yellow]")
+
     @Pyro5.api.expose
     def append_entries(self, term, leaderId, prevLogIndex, prevLogTerm, entries, leaderCommit):
         """Processa append entries RPC recebido do líder."""
@@ -244,26 +312,24 @@ class RaftNode:
             self.term = term
             self.state = RaftState.FOLLOWER.value
 
-        # Log Inicial mostrando o que chegou
         qtd_entradas = len(entries)
         if qtd_entradas > 0:
-            console.print(f"\n[cyan][<] AppendEntries recebido de {leaderId} | Termo: {term} | PrevLogIndex: {prevLogIndex} | Novas Entradas: {qtd_entradas}[/cyan]")
+            console.print(f"\n[cyan][<] AppendEntries recebido de {leaderId} | PrevLogIndex: {prevLogIndex} | Novas Entradas: {qtd_entradas}[/cyan]")
         
         # 1. Reply false if term < currentTerm (§5.1)
         if term < self.term:
-            console.print(f"[yellow][!] Rejeitado: O termo do líder ({term}) é menor que o meu termo atual ({self.term}).[/yellow]")
             return False
         
         # 2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
         if prevLogIndex >= 0:
             if prevLogIndex >= len(self.log):
-                console.print(f"[yellow][!] Rejeitado: O prevLogIndex ({prevLogIndex}) é maior que o tamanho do meu log ({len(self.log) - 1}). Faltam entradas.[/yellow]")
+                if qtd_entradas > 0: console.print(f"[yellow][!] Rejeitado: Faltam entradas anteriores ao índice {prevLogIndex}.[/yellow]")
                 return False
             if self.log[prevLogIndex].term != prevLogTerm:
-                console.print(f"[yellow][!] Rejeitado: O termo no índice {prevLogIndex} ({self.log[prevLogIndex].term}) não bate com o prevLogTerm ({prevLogTerm}) enviado pelo líder.[/yellow]")
+                if qtd_entradas > 0: console.print(f"[yellow][!] Rejeitado: O termo no índice {prevLogIndex} está em conflito.[/yellow]")
                 return False
         
-        # Converte dicionários para objetos LogEntry (se aplicável)
+        # Converte dicionários recebidos para objetos LogEntry
         entradas_obj = [LogEntry(e["term"], e["command"]) if isinstance(e, dict) else e for e in entries]
         
         # 3 e 4. Procurar conflitos e anexar apenas as novas entradas
@@ -272,23 +338,20 @@ class RaftNode:
             index = prevLogIndex + 1 + i
             if index < len(self.log):
                 if self.log[index].term != entry.term:
-                    # Conflito encontrado: apaga o log deste índice em diante
-                    console.print(f"[bold red][!] Conflito no índice {index}! Removendo entradas antigas do log a partir daqui...[/bold red]")
+                    console.print(f"[bold red][!] Conflito no índice {index}! Removendo entradas antigas...[/bold red]")
                     self.log = self.log[:index]
                     break
             else:
-                # Fim do log atual atingido. A partir daqui, as entradas em 'entradas_obj' são novas.
                 novas_entradas_iniciar_em = i
                 break
         else:
-            # Se o for terminar sem acionar nenhum break, significa que todas as entradas enviadas já existem no log perfeitamente.
             novas_entradas_iniciar_em = len(entradas_obj)
 
         entradas_para_adicionar = entradas_obj[novas_entradas_iniciar_em:]
         
         if entradas_para_adicionar:
             self.log.extend(entradas_para_adicionar)
-            console.print(f"[green][+] Anexadas {len(entradas_para_adicionar)} nova(s) entrada(s). Tamanho atual do log: {len(self.log)}[/green]")
+            console.print(f"[green][+] Anexadas {len(entradas_para_adicionar)} nova(s) entrada(s).[/green]")
 
         # 5. If leaderCommit > commitIndex, set commitIndex = min(...)
         if leaderCommit > self.commitIndex:
@@ -299,89 +362,22 @@ class RaftNode:
             
         return True
 
-    def _calcular_info_log(self):
-        """Calcula prevLogIndex e prevLogTerm baseado no log."""
-        prev_log_index = len(self.log) - 1
-        prev_log_term = self.log[prev_log_index].term if prev_log_index >= 0 else 0
-        return prev_log_index, prev_log_term
-
-    def send_heartbeat(self):
-        """Envia heartbeat para todos os peers."""
-        prev_log_index, prev_log_term = self._calcular_info_log()
-
-        for label, uri in self.peers.items():
-            try:
-                with Pyro5.api.Proxy(uri) as proxy:
-                    #console.print(f"[blue][>] Enviando heartbeat para {label}...[/blue]")
-                    proxy._pyroTimeout = PEER_HEARTBEAT_TIMEOUT
-                    proxy.append_entries(self.term, self.node_label, prev_log_index, prev_log_term, [], self.commitIndex)
-            except Exception as e:
-                #console.print(f"[red][!] Falha ao enviar heartbeat para {label}.[/red]")
-                #console.print(f"[red][!] Erro: {e}[/red]")
-                pass
-
-    def send_append_entries(self, command):
-        """Envia AppendEntries RPC para replicar comando aos seguidores."""
-        confirmacoes = 1
-        
-        for label, uri in self.peers.items():
-            try:
-                with Pyro5.api.Proxy(uri) as proxy:
-                    proxy._pyroTimeout = PEER_REQUEST_TIMEOUT
-                    prev_log_index, prev_log_term = self._calcular_info_log()
-                    nova_entrada_dict = {"term": self.term, "command": command}
-                    proxy.append_entries(self.term, self.node_label, prev_log_index, prev_log_term, [nova_entrada_dict], self.commitIndex)
-                    confirmacoes += 1
-                    console.print(f"[green][OK] Comando replicado para {label}[/green]")
-            except Exception as e:
-                console.print(f"[red][!] Falha ao replicar comando para {label}.[/red]")
-                console.print(f"[red][!] Erro: {e}[/red]")
-        return confirmacoes
-
     @Pyro5.api.expose
     def receber_comando(self, comando):
-        """Recebe o comando do cliente e anexa ao log (se for líder)."""
+        """Recebe o comando do cliente de forma assíncrona. (Apenas anexa ao log local)."""
         console.print(f"\n[cyan][>] Comando recebido do cliente: '{comando}'[/cyan]")
         
-        # 1. O Líder anexa ao seu próprio log
-        nova_entrada = {"term": self.term, "command": comando}
-        self.log.append(LogEntry(nova_entrada["term"], nova_entrada["command"]))
-        indice_atual = len(self.log) - 1
+        if self.state != RaftState.LEADER.value:
+            return "Erro: Nó não é o líder atual."
         
-        # 2. O Líder conta a si mesmo como 1 confirmação
-        confirmacoes = 1 
+        # O Líder apenas anexa ao seu próprio log
+        nova_entrada = LogEntry(self.term, comando)
+        self.log.append(nova_entrada)
         
-        # 3. Dispara o AppendEntries para os seguidores
-        console.print(f"[cyan][>] Tentando replicar índice {indice_atual} para seguidores...[/cyan]")
-        for label, uri in self.peers.items():
-            try:
-                with Pyro5.api.Proxy(uri) as proxy:
-                    proxy._pyroTimeout = PEER_REQUEST_TIMEOUT
-                    prev_log_index = indice_atual - 1
-                    prev_log_term = self.log[prev_log_index].term if prev_log_index >= 0 else 0
-                    
-                    sucesso = proxy.append_entries(
-                        self.term, self.node_label, prev_log_index, prev_log_term, 
-                        [nova_entrada], self.commitIndex # Envia o commitIndex atual do líder
-                    )
-                    
-                    if sucesso:
-                        confirmacoes += 1
-                        console.print(f"[green]  + {label} confirmou gravação.[/green]")
-            except Exception:
-                console.print(f"[red]  - Falha de conexão com {label}[/red]")
-                
-        # 4. Regra de Commit do Raft (§5.3): Confirmado pela maioria?
-        total_nos = len(self.peers) + 1 # Seguidores + O próprio líder
-        maioria = (total_nos // 2) + 1
-        
-        if confirmacoes >= maioria:
-            # Líder efetiva (commita) no próprio estado
-            self.commitIndex = indice_atual
-            console.print(f"[magenta][^] QUÓRUM ATINGIDO! Líder efetivou Commit no índice {self.commitIndex}[/magenta]")
-            return f"Sucesso! Comando '{comando}' replicado em {confirmacoes}/{total_nos} nós e comitado."
-        else:
-            return f"Aviso: Comando salvo no líder, mas obteve apenas {confirmacoes}/{total_nos} confirmações. Aguardando volta dos nós para comitar."
+        # Retorna imediatamente. A thread de sincronização (loop_heartbeat) 
+        # vai perceber o novo log e enviar nos próximos milissegundos usando o nextIndex
+        return f"Comando enfileirado com sucesso no termo {self.term}. Aguardando Quórum em background..."
+
 
 def _exibir_menu_inicial():
     """Exibe menu de seleção de nó."""
