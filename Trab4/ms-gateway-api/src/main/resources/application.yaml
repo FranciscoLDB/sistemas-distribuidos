@@ -1,3 +1,45 @@
+server:
+  port: 8080 # Porta padrão para o Gateway
+
 spring:
   application:
     name: ms-gateway-api
+
+  # Configuração do RabbitMQ
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    # Configuração para garantir que as mensagens não se percam facilmente
+    template:
+      retry:
+        enabled: true
+        initial-interval: 1000ms
+        max-attempts: 3
+
+  # Configuração do Banco de Dados (Exemplo com H2 para desenvolvimento)
+  datasource:
+    url: jdbc:h2:mem:gateway_db
+    driverClassName: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true # Permite acessar localhost:8080/h2-console para ver os dados
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create # Cria as tabelas automaticamente com base nas suas entidades
+    show-sql: true # Útil para debug, mostra as queries no console
+
+# Configurações de log para ajudar a ver as notificações SSE e RabbitMQ
+logging:
+  level:
+    org.springframework.web: INFO
+    org.springframework.amqp: INFO
+
+app:
+  rabbitmq:
+    exchange: "Promocoes"
+    queue: "Fila_Gateway"
