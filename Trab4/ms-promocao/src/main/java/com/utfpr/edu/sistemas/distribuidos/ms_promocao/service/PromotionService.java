@@ -7,6 +7,7 @@ import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.crypto.CryptoUtil;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.crypto.KeyManager;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Evento;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Promocao;
+import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Status;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -47,9 +48,10 @@ public class PromotionService {
         promocao.setCategoria(request.categoria());
         promocao.setNomeProduto(request.nomeProduto());
         promocao.setDescricao(request.descricao());
-        promocao.setPrecoOriginal(request.valorOriginal());
-        promocao.setPrecoPromocional(request.valorPromocional());
+        promocao.setPrecoOriginal(request.precoOriginal());
+        promocao.setPrecoPromocional(request.precoPromocional());
         promocao.setVotos(0);
+        promocao.setStatus(Status.NORMAL);
         return promocao;
     }
 

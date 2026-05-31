@@ -5,8 +5,8 @@ import java.math.BigDecimal;
 public record PromocaoCadReq(
         String nomeProduto,
         String descricao,
-        BigDecimal valorOriginal,
-        BigDecimal valorPromocional,
+        BigDecimal precoOriginal,
+        BigDecimal precoPromocional,
         String categoria,
         String email
 ) {

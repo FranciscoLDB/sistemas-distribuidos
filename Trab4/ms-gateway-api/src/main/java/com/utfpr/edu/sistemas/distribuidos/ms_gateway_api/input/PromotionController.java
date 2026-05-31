@@ -1,7 +1,8 @@
 package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input;
 
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoVotoReq;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service.PromotionService;
-import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.dto.PromocaoCadReq;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoCadReq;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -31,9 +32,12 @@ public class PromotionController {
     }
 
     @PostMapping("/promocao/votar")
-    public String votarPromocao() {
+    public ResponseEntity<?> votarPromocao(
+            @RequestHeader("X-Requisitor") String requisitor,
+            @RequestHeader("X-Assinatura") String assinatura,
+            @RequestBody PromocaoVotoReq request) throws Exception {
         log.info("[API][PROMOCAO][VOTAR] Endpoint de votação de promoção acessado.");
-        return promotionService.votarPromocao();
+        return  ResponseEntity.ok(promotionService.votarPromocao(request, assinatura, requisitor));
     }
 
     @PostMapping("/promocao/interesse")

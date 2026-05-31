@@ -1,7 +1,8 @@
 package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service;
 
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.config.RabbitConfig;
-import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.dto.PromocaoCadReq;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoCadReq;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoVotoReq;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Evento;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +36,14 @@ public class PromotionService {
         return "Lista de promoções retornada com sucesso!";
     }
 
-    public String votarPromocao() {
+    public Object votarPromocao(PromocaoVotoReq request, String assinatura, String requisitor) throws Exception {
+        // Converte requesicao para mensagem de evento
+        String votoJson = objectMapper.writeValueAsString(request);
+        Evento evento = new Evento(RabbitConfig.PROMOCAO_VOTO_ROUTING_KEY, votoJson, requisitor);
+        evento.setAssinatura(assinatura);
+
+        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, RabbitConfig.PROMOCAO_VOTO_ROUTING_KEY, evento);
+        log.info("[PROMOCAO][VOTAR] Evento publicado no RabbitMQ: {}", evento);
         return "Voto registrado com sucesso!";
     }
 

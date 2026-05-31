@@ -1,12 +1,12 @@
-package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.dto;
+package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto;
 
 import java.math.BigDecimal;
 
 public record PromocaoCadReq(
         String nomeProduto,
         String descricao,
-        BigDecimal valorOriginal,
-        BigDecimal valorPromocional,
+        BigDecimal precoOriginal,
+        BigDecimal precoPromocional,
         String categoria,
         String email
 ) {
