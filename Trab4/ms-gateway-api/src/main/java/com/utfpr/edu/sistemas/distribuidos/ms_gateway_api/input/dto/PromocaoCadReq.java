@@ -8,6 +8,6 @@ public record PromocaoCadReq(
         BigDecimal precoOriginal,
         BigDecimal precoPromocional,
         String categoria,
-        String email
+        Long lojaId
 ) {
 }

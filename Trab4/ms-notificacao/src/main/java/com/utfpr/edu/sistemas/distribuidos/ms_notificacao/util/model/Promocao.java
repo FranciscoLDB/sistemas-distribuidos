@@ -1,4 +1,4 @@
-package com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model;
+package com.utfpr.edu.sistemas.distribuidos.ms_notificacao.util.model;
 
 import jakarta.persistence.*;
 import lombok.*;

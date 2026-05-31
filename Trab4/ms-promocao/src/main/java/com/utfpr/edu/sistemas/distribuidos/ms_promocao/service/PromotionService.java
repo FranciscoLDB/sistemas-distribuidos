@@ -2,10 +2,12 @@ package com.utfpr.edu.sistemas.distribuidos.ms_promocao.service;
 
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.config.RabbitConfig;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.input.dto.PromocaoCadReq;
+import com.utfpr.edu.sistemas.distribuidos.ms_promocao.repository.LojaRepository;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.repository.PromotionRepository;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.crypto.CryptoUtil;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.crypto.KeyManager;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Evento;
+import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Loja;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Promocao;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Status;
 import lombok.AllArgsConstructor;
@@ -24,9 +26,14 @@ public class PromotionService {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private final RabbitTemplate rabbitTemplate;
     private final PromotionRepository promotionRepository;
+    private final LojaRepository lojaRepository;
 
     public void cadastrarPromocao(PromocaoCadReq request) throws Exception {
+        Loja loja = lojaRepository.findById(request.lojaId())
+                .orElseThrow(() -> new RuntimeException("Loja não encontrada com id: " + request.lojaId()));
+
         Promocao promocao = converterParaPromocao(request);
+        promocao.setLoja(loja);
         var p = promotionRepository.save(promocao);
         log.info("[PROMOCAO][CADASTRAR] Promoção salva no banco de dados: {}", promocao.getId());
 

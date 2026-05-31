@@ -41,6 +41,9 @@ public class Promocao {
     @Enumerated(EnumType.STRING)
     private Status status;
 
+    @ManyToOne
+    private Loja loja;
+
     @Override
     public String toString() {
         return String.format("Promoção: %s | R$ %.2f → R$ %.2f | Votos: %d",

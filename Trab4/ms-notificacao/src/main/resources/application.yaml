@@ -1,0 +1,52 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: ms-notificacao
+
+  # Configuração do RabbitMQ
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    # Configuração para garantir que as mensagens não se percam facilmente
+    template:
+      retry:
+        enabled: true
+        initial-interval: 1000ms
+        max-attempts: 3
+
+  # Configuração do Banco de Dados (Atualizado para PostgreSQL via Docker)
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:postgres}
+    driverClassName: org.postgresql.Driver
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:password}
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  mail:
+    host: sandbox.smtp.mailtrap.io
+    port: 2525 # Ou 587, conforme aparecer lá
+    username: 9b468e37b2f1f9
+    password: 2df56a27c7e9c7
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+    # Opcional: encoding padrão
+    default-encoding: UTF-8
+
+# Configurações de log para ajudar a ver as notificações SSE e RabbitMQ
+logging:
+  level:
+    org.springframework.web: INFO
+    org.springframework.amqp: INFO
