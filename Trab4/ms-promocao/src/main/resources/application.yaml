@@ -1,0 +1,43 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: ms-gateway-api
+
+  # Configuração do RabbitMQ
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    # Configuração para garantir que as mensagens não se percam facilmente
+    template:
+      retry:
+        enabled: true
+        initial-interval: 1000ms
+        max-attempts: 3
+
+  # Configuração do Banco de Dados (Atualizado para PostgreSQL via Docker)
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:postgres}
+    driverClassName: org.postgresql.Driver
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:password}
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+# Configurações de log para ajudar a ver as notificações SSE e RabbitMQ
+logging:
+  level:
+    org.springframework.web: INFO
+    org.springframework.amqp: INFO
+
+app:
+  rabbitmq:
+    exchange: "Promocoes"
+    queue: "Fila_Gateway"

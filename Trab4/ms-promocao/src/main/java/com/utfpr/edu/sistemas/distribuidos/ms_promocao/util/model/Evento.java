@@ -1,10 +1,7 @@
-package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model;
+package com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 /**
  * Classe genérica para representar eventos assinados

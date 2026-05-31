@@ -1,0 +1,48 @@
+package com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name = "promocoes")
+public class Promocao {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE)
+    private Long id;
+
+    private String nomeProduto;
+
+    private String descricao;
+
+    private BigDecimal precoOriginal;
+
+    private BigDecimal precoPromocional;
+
+    private String categoria;
+
+    private Integer votos;
+
+    @Column(
+            name = "data_criacao",
+            nullable = false,
+            updatable = false,
+            insertable = false,
+            columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    )
+    private LocalDateTime dataCriacao;
+
+    private String status; // NORMAL, DESTAQUE
+
+    @Override
+    public String toString() {
+        return String.format("Promoção: %s | R$ %.2f → R$ %.2f | Votos: %d",
+                nomeProduto, precoOriginal, precoPromocional,  votos);
+    }
+}

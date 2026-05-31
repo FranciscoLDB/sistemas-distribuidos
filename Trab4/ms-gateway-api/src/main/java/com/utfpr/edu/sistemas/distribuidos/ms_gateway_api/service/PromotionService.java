@@ -27,7 +27,7 @@ public class PromotionService {
 
         // Publica mensagem no topico do RabbitMQ promocao.recebida
         rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, RabbitConfig.PROMOCAO_RECEBIDA_ROUTING_KEY, evento);
-        log.info("[PROMOCAO][CADASTRAR] Evento publicado no RabbitMQ: {}", evento.getTipo());
+        log.info("[PROMOCAO][CADASTRAR] Evento publicado no RabbitMQ: {}", evento);
         return "Promoção enviada para cadastro!";
     }
 

@@ -1,4 +1,4 @@
-package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.dto;
+package com.utfpr.edu.sistemas.distribuidos.ms_promocao.input.dto;
 
 import java.math.BigDecimal;
 

@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.utfpr.edu.sistemas.distribuidos</groupId>
-	<artifactId>ms-gateway-api</artifactId>
+	<artifactId>ms-promocao</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name/>
 	<description/>
@@ -47,11 +47,17 @@
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
 
-        <!-- Base de dados -->
+        <!-- Base de dados postgress-->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>runtime</scope>
+            <scope>test</scope>
         </dependency>
 
 		<dependency>
