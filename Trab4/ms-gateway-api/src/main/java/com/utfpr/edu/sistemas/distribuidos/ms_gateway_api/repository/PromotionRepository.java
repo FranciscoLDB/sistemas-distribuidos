@@ -1,6 +1,6 @@
-package com.utfpr.edu.sistemas.distribuidos.ms_notificacao.repository;
+package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.repository;
 
-import com.utfpr.edu.sistemas.distribuidos.ms_notificacao.util.model.Promocao;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Promocao;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
 

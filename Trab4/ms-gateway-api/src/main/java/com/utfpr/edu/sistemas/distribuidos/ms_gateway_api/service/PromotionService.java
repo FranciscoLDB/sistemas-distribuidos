@@ -3,12 +3,16 @@ package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.config.RabbitConfig;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoCadReq;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoVotoReq;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.repository.PromotionRepository;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Evento;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Promocao;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
+
+import java.util.List;
 
 @Slf4j
 @Service
@@ -19,6 +23,7 @@ public class PromotionService {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private final RabbitTemplate rabbitTemplate;
+    private final PromotionRepository promotionRepository;
 
     public Object cadastrarPromocao(PromocaoCadReq request, String assinatura, String requisitor) throws Exception {
         // Converte requesicao para mensagem de evento
@@ -32,8 +37,9 @@ public class PromotionService {
         return "Promoção enviada para cadastro!";
     }
 
-    public String listarPromocoes() {
-        return "Lista de promoções retornada com sucesso!";
+    public List<Promocao> listarPromocoes() {
+        Iterable<Promocao> promocoesOpt = promotionRepository.findAll();
+        return (List<Promocao>) promocoesOpt;
     }
 
     public Object votarPromocao(PromocaoVotoReq request, String assinatura, String requisitor) throws Exception {

@@ -1,5 +1,6 @@
 package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input;
 
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoInteresseReq;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoVotoReq;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service.PromotionService;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoCadReq;
@@ -26,9 +27,9 @@ public class PromotionController {
     }
 
     @GetMapping("/promocao")
-    public String listarPromocoes() {
+    public ResponseEntity<?> listarPromocoes() {
         log.info("[API][PROMOCOES][LISTAR] Endpoint de listagem de promoções acessado.");
-        return promotionService.listarPromocoes();
+        return ResponseEntity.ok(promotionService.listarPromocoes());
     }
 
     @PostMapping("/promocao/votar")
@@ -41,7 +42,9 @@ public class PromotionController {
     }
 
     @PostMapping("/promocao/interesse")
-    public String cadastrarInteresse() {
+    public String cadastrarInteresse(
+            @RequestBody PromocaoInteresseReq request
+    ) {
         log.info("[API][PROMOCAO][INTERESSE][CADASTRAR] Endpoint de cadastro de interesse acessado.");
         return promotionService.cadastrarInteresse();
     }

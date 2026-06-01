@@ -1,55 +1,48 @@
 package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.persistence.*;
+import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Getter
-@Setter
+@Data
+@Entity
 @NoArgsConstructor
 @AllArgsConstructor
+@Table(name = "promocoes")
 public class Promocao {
 
-    @JsonProperty("id")
-    private String id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE)
+    private Long id;
 
-    @JsonProperty("nomeProduto")
     private String nomeProduto;
 
-    @JsonProperty("precoOriginal")
-    private double precoOriginal;
+    private String descricao;
 
-    @JsonProperty("precoPromocional")
-    private double precoPromocional;
+    private BigDecimal precoOriginal;
 
-    @JsonProperty("categoria")
+    private BigDecimal precoPromocional;
+
     private String categoria;
 
-    @JsonProperty("votos")
-    private int votos;
+    private Integer votos;
 
-    // yyyy-MM-dd HH:mm:ss
-    @JsonProperty("dataCriacao")
-    private String dataCriacao;
+    @Column(
+            name = "data_criacao",
+            nullable = false,
+            updatable = false,
+            insertable = false,
+            columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    )
+    private LocalDateTime dataCriacao;
 
-    @JsonProperty("status")
-    private String status; // NORMAL, DESTAQUE
+    @Enumerated(EnumType.STRING)
+    private Status status;
 
-    // Constructor for backward compatibility
-    public Promocao(String id, String nomeProduto, double preco) {
-        this.id = id;
-        this.nomeProduto = nomeProduto;
-        this.precoOriginal = preco;
-        this.precoPromocional = preco;
-        this.votos = 0;
-        this.dataCriacao = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        this.status = "NORMAL";
-        this.categoria = "Geral";
-    }
+    @ManyToOne
+    private Loja loja;
 
     @Override
     public String toString() {

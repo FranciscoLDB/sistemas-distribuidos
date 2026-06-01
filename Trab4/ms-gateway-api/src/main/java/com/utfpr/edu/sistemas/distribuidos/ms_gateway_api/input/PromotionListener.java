@@ -25,11 +25,6 @@ public class PromotionListener {
     public void processarMensagem(Evento evento, @Header("amqp_receivedRoutingKey") String routingKey) {
         log.info("[LISTENER][{}] Evento recebido!", routingKey);
 
-        if (!validarAssinatura(evento)) {
-            log.warn("[LISTENER][{}] Assinatura inválida. Evento ignorado.", routingKey);
-            return;
-        }
-
         try {
             // 2. Deserializar o conteúdo (JSON) para o objeto Promocao
             Promocao promocao = objectMapper.readValue(evento.getConteudo(), Promocao.class);
@@ -58,31 +53,24 @@ public class PromotionListener {
         }
     }
 
-    // --- Métodos de Ação (Aqui você conectará com o SseService e Banco de Dados) ---
-
     private void processarPromocaoPublicada(Promocao promocao) {
-        System.out.println("✅ [nova_publicacao] Salvando no banco: " + promocao.getNomeProduto());
+        System.out.println("[nova_publicacao] " + promocao.getNomeProduto());
         // Lógica: Salvar no repositório
     }
 
     private void processarPromocaoDestaque(Promocao promocao) {
-        System.out.println("⭐ [destaque] Promoção em destaque: " + promocao.getNomeProduto());
+        System.out.println("[destaque] Promoção em destaque: " + promocao.getNomeProduto());
         // Lógica: Disparar SSE para clientes (Hot Deals)
     }
 
-    private void processarPromocaoCategoria(Promocao promocao, String categoriaTópico) {
-        System.out.println("📦 [categoria] Nova promoção na categoria '" + categoriaTópico + "': " + promocao.getNomeProduto());
+    private void processarPromocaoCategoria(Promocao promocao, String categoriaTopico) {
+        System.out.println("[categoria] Nova promoção na categoria '" + categoriaTopico + "': " + promocao.getNomeProduto());
         // Lógica: Buscar no banco quem segue essa categoria e disparar SSE
     }
 
     private void processarNotificacaoHotdeal(Promocao promocao) {
-        System.out.println("🔥 [hotdeal] Notificação geral de Hot Deal: " + promocao.getNomeProduto());
+        System.out.println("[hotdeal] Notificação geral de Hot Deal: " + promocao.getNomeProduto());
         // Lógica: Disparar notificação SSE para todos ou grupos específicos
     }
 
-    // --- Lógica de Segurança Mockada (Substitua pela sua classe CryptoUtil) ---
-    private boolean validarAssinatura(Evento evento) {
-        // Implemente a chamada para CryptoUtil.verify(...) aqui
-        return true;
-    }
 }

@@ -18,20 +18,17 @@ spring:
         initial-interval: 1000ms
         max-attempts: 3
 
-  # Configuração do Banco de Dados (Exemplo com H2 para desenvolvimento)
   datasource:
-    url: jdbc:h2:mem:gateway_db
-    driverClassName: org.h2.Driver
-    username: sa
-    password:
-  h2:
-    console:
-      enabled: true # Permite acessar localhost:8080/h2-console para ver os dados
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:postgres}
+    driverClassName: org.postgresql.Driver
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:password}
+
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      ddl-auto: create # Cria as tabelas automaticamente com base nas suas entidades
-    show-sql: true # Útil para debug, mostra as queries no console
+      ddl-auto: update
+    show-sql: true
 
 # Configurações de log para ajudar a ver as notificações SSE e RabbitMQ
 logging:
