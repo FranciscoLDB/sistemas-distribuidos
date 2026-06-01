@@ -4,7 +4,6 @@ import java.util.List;
 
 public record CreateUserRequest(
         String nome,
-        String email,
         String senha,
         List<Long> categoriasInteresse
 ) {

@@ -1,5 +1,6 @@
 package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input;
 
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.CreateLojaRequest;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.CreateUserRequest;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service.RegisterService;
 import lombok.RequiredArgsConstructor;
@@ -22,5 +23,14 @@ public class RegisterController {
             @RequestBody CreateUserRequest request) throws Exception {
         log.info("[API][USUARIO][CADASTRAR] Endpoint de cadastro de usuário acessado.");
         return ResponseEntity.ok(registerService.cadastrarUsuario(request, assinatura, requisitor));
+    }
+
+    @PostMapping("/loja")
+    public ResponseEntity<?> cadastrarLoja(
+            @RequestHeader("X-Requisitor") String requisitor,
+            @RequestHeader("X-Assinatura") String assinatura,
+            @RequestBody CreateLojaRequest request) throws Exception {
+        log.info("[API][LOJA][CADASTRAR] Endpoint de cadastro de loja acessado.");
+        return ResponseEntity.ok(registerService.cadastrarLoja(request, assinatura, requisitor));
     }
 }
