@@ -52,12 +52,4 @@ public class PromotionService {
         log.info("[PROMOCAO][VOTAR] Evento publicado no RabbitMQ: {}", evento);
         return "Voto registrado com sucesso!";
     }
-
-    public String cadastrarInteresse() {
-        return "Interesse cadastrado com sucesso!";
-    }
-
-    public String removerInteresse() {
-        return "Interesse removido com sucesso!";
-    }
 }

@@ -32,6 +32,12 @@ public class Usuario {
     )
     private List<Categoria> categorias = new ArrayList<>();
 
+    public void adicionarInteresse(Categoria categoria) {
+        if(!categorias.contains(categoria)) {
+            categorias.add(categoria);
+        }
+    }
+
     @Override
     public String toString() {
         return String.format("Usuário: %s | Senha: %s", nome, senha);

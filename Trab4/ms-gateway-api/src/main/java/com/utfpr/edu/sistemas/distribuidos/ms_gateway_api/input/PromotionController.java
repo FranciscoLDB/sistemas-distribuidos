@@ -40,18 +40,4 @@ public class PromotionController {
         log.info("[API][PROMOCAO][VOTAR] Endpoint de votação de promoção acessado.");
         return  ResponseEntity.ok(promotionService.votarPromocao(request, assinatura, requisitor));
     }
-
-    @PostMapping("/promocao/interesse")
-    public String cadastrarInteresse(
-            @RequestBody PromocaoInteresseReq request
-    ) {
-        log.info("[API][PROMOCAO][INTERESSE][CADASTRAR] Endpoint de cadastro de interesse acessado.");
-        return promotionService.cadastrarInteresse();
-    }
-
-    @DeleteMapping("/promocao/interesse")
-    public String removerInteresse() {
-        log.info("[API][PROMOCAO][INTERESSE][REMOVER] Endpoint de remoção de interesse acessado.");
-        return promotionService.removerInteresse();
-    }
 }

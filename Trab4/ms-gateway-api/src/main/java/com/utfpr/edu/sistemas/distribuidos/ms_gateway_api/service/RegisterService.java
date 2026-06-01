@@ -1,6 +1,7 @@
 package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service;
 
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.CreateLojaRequest;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.UserInteresseRequest;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.CreateUserRequest;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.repository.CategoriaRepository;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.repository.LojaRepository;
@@ -32,6 +33,24 @@ public class RegisterService {
         Loja loja = mapToLoja(request);
         lojaRepository.save(loja);
         return "Loja cadastrada com sucesso!";
+    }
+
+    public String cadastrarInteresseUsuario(UserInteresseRequest request, String assinatura, String requisitor) {
+        Usuario usuario = usuarioRepository.findById(request.usuarioId())
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado com id: " + request.usuarioId()));
+        List<Categoria> categorias = getCategoriasByIds(request.categoriasInteresse());
+        categorias.forEach(usuario::adicionarInteresse);
+        usuarioRepository.save(usuario);
+        return "Interesse do usuário cadastrado com sucesso!";
+    }
+
+    public String removerInteresseUsuario(UserInteresseRequest request, String assinatura, String requisitor) {
+        Usuario usuario = usuarioRepository.findById(request.usuarioId())
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado com id: " + request.usuarioId()));
+        List<Categoria> categorias = getCategoriasByIds(request.categoriasInteresse());
+        usuario.getCategorias().removeAll(categorias);
+        usuarioRepository.save(usuario);
+        return "Interesse do usuário removido com sucesso!";
     }
 
     private List<Categoria> getCategoriasByIds(List<Long> categoriaIds) {

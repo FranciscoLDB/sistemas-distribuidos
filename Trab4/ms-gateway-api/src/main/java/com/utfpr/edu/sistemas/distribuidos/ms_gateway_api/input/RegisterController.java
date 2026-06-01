@@ -1,6 +1,7 @@
 package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input;
 
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.CreateLojaRequest;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.UserInteresseRequest;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.CreateUserRequest;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service.RegisterService;
 import lombok.RequiredArgsConstructor;
@@ -32,5 +33,23 @@ public class RegisterController {
             @RequestBody CreateLojaRequest request) throws Exception {
         log.info("[API][LOJA][CADASTRAR] Endpoint de cadastro de loja acessado.");
         return ResponseEntity.ok(registerService.cadastrarLoja(request, assinatura, requisitor));
+    }
+
+    @PostMapping("/user/interesse")
+    public ResponseEntity<?> cadastrarInteresse(
+            @RequestHeader("X-Requisitor") String requisitor,
+            @RequestHeader("X-Assinatura") String assinatura,
+            @RequestBody UserInteresseRequest request) throws Exception {
+        log.info("[API][USUARIO][INTERESSE][CADASTRAR] Endpoint de cadastro de interesse do usuário acessado.");
+        return ResponseEntity.ok(registerService.cadastrarInteresseUsuario(request, assinatura, requisitor));
+    }
+
+    @DeleteMapping("/user/interesse")
+    public ResponseEntity<?> removerInteresse(
+            @RequestHeader("X-Requisitor") String requisitor,
+            @RequestHeader("X-Assinatura") String assinatura,
+            @RequestBody UserInteresseRequest request) throws Exception {
+        log.info("[API][USUARIO][INTERESSE][REMOVER] Endpoint de remoção de interesse do usuário acessado.");
+        return ResponseEntity.ok(registerService.removerInteresseUsuario(request, assinatura, requisitor));
     }
 }
