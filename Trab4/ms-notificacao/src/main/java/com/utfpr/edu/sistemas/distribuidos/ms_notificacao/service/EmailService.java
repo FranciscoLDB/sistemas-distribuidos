@@ -4,17 +4,20 @@ import com.resend.*;
 import com.resend.core.exception.ResendException;
 import com.resend.services.emails.model.CreateEmailOptions;
 import com.resend.services.emails.model.CreateEmailResponse;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-@AllArgsConstructor
 public class EmailService {
 
-    private final String RESEND_API_KEY = "re_8arppFzn_JyUcR5Etvgw931A2d6JZnMuG";
+    private final String RESEND_API_KEY;
+
+    public EmailService(@Value("${email.resend-key:}") String resendApiKey) {
+        this.RESEND_API_KEY = resendApiKey;
+    }
 
     @Async
     public void enviarEmail(String para, String assunto, String corpo) {

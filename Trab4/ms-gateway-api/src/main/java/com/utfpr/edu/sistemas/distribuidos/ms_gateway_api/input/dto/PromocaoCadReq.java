@@ -7,7 +7,7 @@ public record PromocaoCadReq(
         String descricao,
         BigDecimal precoOriginal,
         BigDecimal precoPromocional,
-        String categoria,
+        Long categoriaId,
         Long lojaId
 ) {
 }

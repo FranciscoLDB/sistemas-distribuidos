@@ -26,7 +26,7 @@ public class NotificacaoService {
 
         emailService.enviarEmail(emailLoja, "Promoção publicada!", mensagem);
 
-        String categoriaRoutingKey = "promocao.categoria." + promocao.getCategoria().toLowerCase().replace(" ", "");
+        String categoriaRoutingKey = "promocao.categoria." + promocao.getCategoria().getNome().toLowerCase().replace(" ", "");
         Evento evento = geraEvento(promocao, categoriaRoutingKey);
         rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, categoriaRoutingKey, evento);
         log.info("[NOTIFICACAO][PUBLICADA] Evento de publicação publicado no RabbitMQ: {}", evento.getTipo());
@@ -38,7 +38,7 @@ public class NotificacaoService {
 
         emailService.enviarEmail(emailLoja, "Promoção HOT DEAL!", mensagem);
 
-        String categoriaRoutingKey = "promocao.categoria." + promocao.getCategoria().toLowerCase().replace(" ", "");
+        String categoriaRoutingKey = "promocao.categoria." + promocao.getCategoria().getNome().toLowerCase().replace(" ", "");
         Evento evento = geraEvento(promocao, categoriaRoutingKey);
         rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, categoriaRoutingKey, evento);
         log.info("[NOTIFICACAO][DESTAQUE] Evento de destaque publicado no RabbitMQ: {}", evento.getTipo());

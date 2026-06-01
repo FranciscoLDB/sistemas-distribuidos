@@ -25,7 +25,8 @@ public class Promocao {
 
     private BigDecimal precoPromocional;
 
-    private String categoria;
+    @ManyToOne
+    private Categoria categoria;
 
     private Integer votos;
 

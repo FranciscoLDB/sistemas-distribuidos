@@ -2,14 +2,12 @@ package com.utfpr.edu.sistemas.distribuidos.ms_promocao.service;
 
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.config.RabbitConfig;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.input.dto.PromocaoCadReq;
+import com.utfpr.edu.sistemas.distribuidos.ms_promocao.repository.CategoriaRepository;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.repository.LojaRepository;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.repository.PromotionRepository;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.crypto.CryptoUtil;
 import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.crypto.KeyManager;
-import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Evento;
-import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Loja;
-import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Promocao;
-import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.Status;
+import com.utfpr.edu.sistemas.distribuidos.ms_promocao.util.model.*;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -27,13 +25,18 @@ public class PromotionService {
     private final RabbitTemplate rabbitTemplate;
     private final PromotionRepository promotionRepository;
     private final LojaRepository lojaRepository;
+    private final CategoriaRepository categoriaRepository;
 
     public void cadastrarPromocao(PromocaoCadReq request) throws Exception {
         Loja loja = lojaRepository.findById(request.lojaId())
                 .orElseThrow(() -> new RuntimeException("Loja não encontrada com id: " + request.lojaId()));
 
+        Categoria categoria = categoriaRepository.findById(request.categoriaId())
+                .orElseThrow(() -> new RuntimeException("Categoria não encontrada com id: " + request.categoriaId()));
+
         Promocao promocao = converterParaPromocao(request);
         promocao.setLoja(loja);
+        promocao.setCategoria(categoria);
         var p = promotionRepository.save(promocao);
         log.info("[PROMOCAO][CADASTRAR] Promoção salva no banco de dados: {}", promocao.getId());
 
@@ -52,7 +55,6 @@ public class PromotionService {
 
     private Promocao converterParaPromocao(PromocaoCadReq request) {
         Promocao promocao = new Promocao();
-        promocao.setCategoria(request.categoria());
         promocao.setNomeProduto(request.nomeProduto());
         promocao.setDescricao(request.descricao());
         promocao.setPrecoOriginal(request.precoOriginal());

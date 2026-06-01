@@ -36,3 +36,6 @@ logging:
   level:
     org.springframework.web: INFO
     org.springframework.amqp: INFO
+
+email:
+  resend-key: ${EMAIL_RESEND_KEY:key}
