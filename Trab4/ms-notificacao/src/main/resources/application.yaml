@@ -31,20 +31,6 @@ spring:
       ddl-auto: update
     show-sql: true
 
-  mail:
-    host: sandbox.smtp.mailtrap.io
-    port: 2525 # Ou 587, conforme aparecer lá
-    username: 9b468e37b2f1f9
-    password: 2df56a27c7e9c7
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-    # Opcional: encoding padrão
-    default-encoding: UTF-8
-
 # Configurações de log para ajudar a ver as notificações SSE e RabbitMQ
 logging:
   level:
