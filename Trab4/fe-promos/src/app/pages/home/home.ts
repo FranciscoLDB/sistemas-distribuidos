@@ -5,7 +5,7 @@ import { Promocoes } from "../promocoes/promocoes";
 
 @Component({
   selector: 'app-home',
-  imports: [Header, Footer, Promocoes],
+  imports: [Promocoes],
   templateUrl: './home.html',
   styleUrl: './home.css',
 })
