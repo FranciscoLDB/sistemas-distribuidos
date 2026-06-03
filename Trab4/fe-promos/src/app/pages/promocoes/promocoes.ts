@@ -1,55 +1,106 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Subscription } from 'rxjs';
 import { Promocao } from "../../components/promocao/promocao";
 import { Filtro } from "../../compoents/filtro/filtro";
+import { PromocaoService } from "../../services/promocao-service";
+import { PromocaoModel } from "../../models/promocaoModel";
+
+export interface Toast {
+  id: number;
+  promocao: PromocaoModel;
+}
+
+let toastIdCounter = 0;
+const TOAST_DURATION = 5000; // Duração do toast em milissegundos
 
 @Component({
   selector: 'app-promocoes',
   standalone: true,
-  imports: [CommonModule, Promocao, Filtro], // 👈 Declare-o aqui
+  imports: [CommonModule, Promocao, Filtro],
   templateUrl: './promocoes.html',
   styleUrl: './promocoes.css',
 })
-export class Promocoes {
+export class Promocoes implements OnInit, OnDestroy {
   private LIMITE_HOT_DEAL = 5;
+  private sseSubscription!: Subscription;
+  readonly toasts = [] as Toast[];
+  
+  private REQUISITOR_MOCK = "consumidor" + Math.floor(Math.random() * 1000); // Gera um ID de consumidor aleatório para testes
+  private ASSINATURA_MOCK = "assinatura_digital_hash_aqui";
 
-  // Lista mestre vinda do backend
-  listaPromocoes = [
-    {
-      "id": 2,
-      "nomeProduto": "Notebook",
-      "descricao": "Dell i7 1tb de armazenamento SSD de alta performance",
-      "precoOriginal": 4000.00,
-      "precoPromocional": 2000.00,
-      "categoria": { "id": 1, "nome": "ELETRONICOS" },
-      "votos": 0,
-      "dataCriacao": "2026-06-01T14:46:33.632176",
-      "status": "NORMAL",
-      "loja": { "id": 1, "nome": "TechZone", "imagemUrl": "https://placehold.co/100x100?text=TechZone" }
-    },
-    {
-      "id": 1,
-      "nomeProduto": "Moto Honda",
-      "descricao": "XRE 190 nova, excelente para o dia a dia e viagens",
-      "precoOriginal": 8000.00,
-      "precoPromocional": 6500.00,
-      "categoria": { "id": 2, "nome": "AUTOMOVEL" },
-      "votos": 4,
-      "status": "NORMAL",
-      "loja": { "id": 2, "nome": "FastCar", "imagemUrl": "https://placehold.co/100x100?text=FastCar" }
-    }
-  ];
+  listaPromocoes: any[] = [];
+  promocoesFiltradas: any[] = [];
 
-  // Lista que será de fato exibida no HTML
-  promocoesFiltradas = [...this.listaPromocoes];
-
-  // Estado atual dos filtros aplicados
   filtrosAtivos = {
     categoriaId: null as number | null,
     apenasDestaques: false
   };
 
-  // Executa toda vez que o componente Filtro emite uma mudança
+  // Injeção do service criado
+  constructor(private promocaoService: PromocaoService) {}
+
+  ngOnInit(): void {
+    this.carregarPromocoesDoServidor();
+    this.conectarAoCanalSse();
+  }
+
+  ngOnDestroy(): void {
+    // Garante que o streaming será fechado se o usuário mudar de página
+    if (this.sseSubscription) {
+      this.sseSubscription.unsubscribe();
+    }
+  }
+
+  // Busca inicial das promoções via REST comum
+  private carregarPromocoesDoServidor() {
+    this.promocaoService.listar().subscribe({
+      next: (dados) => {
+        this.listaPromocoes = dados;
+        this.recalcularListaExibida();
+      },
+      error: (err) => console.error('Erro ao buscar promoções iniciais:', err)
+    });
+  }
+
+  // Inicia a escuta SSE ativa em background
+  private conectarAoCanalSse() {
+    this.sseSubscription = this.promocaoService
+      .ouvirStreamNotificacoes(this.REQUISITOR_MOCK)
+      .subscribe({
+        next: (novaPromocao) => {
+          console.log('Nova promoção recebida em tempo real via SSE:', novaPromocao);
+          this.exibirToast(novaPromocao);
+          
+          // Verifica se a promoção já existe na nossa lista atual (evita duplicar)
+          const index = this.listaPromocoes.findIndex(p => p.id === novaPromocao.id);
+          
+          if (index !== -1) {
+            // Atualiza o registro existente
+            this.listaPromocoes[index] = novaPromocao;
+          } else {
+            // Insere a nova promoção no início da lista da interface gráfica
+            this.listaPromocoes.unshift(novaPromocao);
+          }
+          
+          this.recalcularListaExibida();
+        },
+        error: (err) => console.error('Erro na conexão SSE streaming:', err)
+      });
+  }
+
+  private exibirToast(promocao: any) {
+    const toast: Toast = {
+      id: ++toastIdCounter,
+      promocao
+    };
+    this.toasts.unshift(toast);
+    setTimeout(() => 
+      { this.toasts.filter(t => t.id !== toast.id); }, 
+      TOAST_DURATION
+    );
+  }
+
   aplicarFiltros(event: { categoriaId: number | null; apenasDestaques: boolean }) {
     this.filtrosAtivos.categoriaId = event.categoriaId;
     this.filtrosAtivos.apenasDestaques = event.apenasDestaques;
@@ -58,11 +109,9 @@ export class Promocoes {
 
   private recalcularListaExibida() {
     this.promocoesFiltradas = this.listaPromocoes.filter(promo => {
-      // 1. Filtro por Categoria
       const atendeCategoria = this.filtrosAtivos.categoriaId === null || 
                                promo.categoria.id === this.filtrosAtivos.categoriaId;
       
-      // 2. Filtro por Status Destaque
       const atendeDestaque = !this.filtrosAtivos.apenasDestaques || 
                              promo.status === 'DESTAQUE';
 
@@ -70,24 +119,34 @@ export class Promocoes {
     });
   }
 
+  // Atualizado para disparar a requisição POST REST real para o seu Backend Spring Boot
   processarVoto(evento: { promoId: number; tipo: 'POSITIVO' | 'NEGATIVO' }) {
-    const promocao = this.listaPromocoes.find(p => p.id === evento.promoId);
-    
-    if (promocao) {
-      if (evento.tipo === 'POSITIVO') {
-        promocao.votos++;
-      } else {
-        promocao.votos--;
+    this.promocaoService.votar(
+      evento.promoId, 
+      evento.tipo, 
+      this.REQUISITOR_MOCK, 
+      this.ASSINATURA_MOCK
+    ).subscribe({
+      next: (promocaoAtualizada) => {
+        // O backend retorna o estado atualizado do objeto promoção
+        const index = this.listaPromocoes.findIndex(p => p.id === evento.promoId);
+        if (index !== -1) {
+          this.listaPromocoes[index] = promocaoAtualizada;
+          this.recalcularListaExibida();
+        }
+      },
+      error: (err) => {
+        console.error('Falha ao computar voto no backend:', err);
+        
+        // Fallback Local defensivo: se sua API REST ainda não estiver de pé,
+        // ele computa em tela para você não travar os seus testes de layout frontend:
+        const promocao = this.listaPromocoes.find(p => p.id === evento.promoId);
+        if (promocao) {
+          evento.tipo === 'POSITIVO' ? promocao.votos++ : promocao.votos--;
+          promocao.status = promocao.votos >= this.LIMITE_HOT_DEAL ? 'DESTAQUE' : 'NORMAL';
+          this.recalcularListaExibida();
+        }
       }
-
-      if (promocao.votos >= this.LIMITE_HOT_DEAL) {
-        promocao.status = 'DESTAQUE';
-      } else {
-        promocao.status = 'NORMAL';
-      }
-
-      // Força a atualização da tela respeitando os filtros que já estavam ligados
-      this.recalcularListaExibida();
-    }
+    });
   }
 }
