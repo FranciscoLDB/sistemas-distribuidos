@@ -1,0 +1,307 @@
+opencollection: 1.0.0
+info:
+  name: Sistemas Distribuidos
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ''
+      port: ''
+      auth:
+        username: ''
+        password: ''
+      bypassProxy: ''
+  environments:
+    - name: sistemas-distribuidos
+      variables:
+        - name: LOJA_PK
+          secret: true
+items:
+  - info:
+      name: Trab4
+      type: folder
+      seq: 1
+    request:
+      auth: inherit
+    items:
+      - info:
+          name: cadastrar promoção (loja)
+          type: http
+          seq: 1
+        http:
+          method: POST
+          url: http://localhost:8080/v1/promocao
+          headers:
+            - name: X-Requisitor
+              value: Loja
+            - name: X-Assinatura
+              value: ''
+          body:
+            type: json
+            data: |-
+              {
+                "nomeProduto": "Pizza Gigante de Calabresa",
+                "descricao": "Melhor pizza da região com borda recheada de catupiry gratis!",
+                "precoOriginal": 65.00,
+                "precoPromocional": 44.90,
+                "categoriaId": 1,
+                "lojaId": 1
+              }
+
+              /*
+              {
+                "nomeProduto": "Pizza Gigante de Calabresa",
+                "descricao": "Melhor pizza da região com borda recheada de catupiry gratis!",
+                "precoOriginal": 65.00,
+                "precoPromocional": 44.90,
+                "categoriaId": 1,
+                "lojaId": 1
+              }
+
+              {
+                "nomeProduto": "Mouse Gamer RGB 12000 DPI",
+                "descricao": "Mouse ergonômico com switches mecânicos e software de macro.",
+                "precoOriginal": 180.00,
+                "precoPromocional": 99.90,
+                "categoriaId": 2,
+                "lojaId": 3
+              }
+
+              {
+                "nomeProduto": "Livro Código Limpo (Clean Code)",
+                "descricao": "O guia clássico de artesanato de software ágil do Uncle Bob.",
+                "precoOriginal": 110.00,
+                "precoPromocional": 75.00,
+                "categoriaId": 4,
+                "lojaId": 3
+              }
+              */
+          auth: inherit
+        runtime:
+          scripts:
+            - type: before-request
+              code: |-
+                const crypto = require('crypto');
+
+                const pk = bru.getEnvVar("LOJA_PK");
+                if (!pk) throw new Error("LOJA_PK não encontrada no Environment!");
+
+                const rawBody = req.body;
+
+                // Função para formatar o objeto simulando o Jackson do Java
+                const formatForJava = (obj) => {
+                  return JSON.stringify(obj, (key, value) => {
+                    if (key === 'lojaId'){
+                      return value;
+                    }
+                    
+                    if (key === 'categoriaId'){
+                      return value;
+                    }
+                    
+                    // Se o valor for um número, força o .00 (se for o caso do seu Java)
+                    if (typeof value === 'number') {
+                      return value.toFixed(2); 
+                    }
+                    return value;
+                  }).replace(/"(\d+\.\d+)"/g, '$1'); // Remove as aspas dos números que o toFixed colocou
+                };
+
+                const message = formatForJava(rawBody);
+
+                // O restante do seu script de assinatura (crypto.createSign...) continua igual
+
+                // Agora, com o allowNodejs: true, isso AQUI VAI FUNCIONAR:
+                const sign = crypto.createSign('RSA-SHA256');
+                sign.update(message);
+                const signature = sign.sign(pk, 'base64');
+
+                // Define o Header que o seu Gateway vai ler
+                req.setHeader("X-Assinatura", signature);
+                console.log("Mensagem assinada:", message);
+                console.log("Assinatura:", signature);
+        settings:
+          encodeUrl: true
+          timeout: 0
+          followRedirects: true
+          maxRedirects: 5
+      - info:
+          name: cancelar interesse em categorias
+          type: http
+          seq: 5
+        http:
+          method: DELETE
+          url: http://localhost:8080/v1/user/interesse
+          headers:
+            - name: X-Assinatura
+              value: ''
+            - name: X-Requisitor
+              value: ''
+          body:
+            type: json
+            data: |-
+              {
+                "usuarioId": 1,
+                "categoriasInteresse": [2]
+              }
+          auth: inherit
+        settings:
+          encodeUrl: true
+          timeout: 0
+          followRedirects: true
+          maxRedirects: 5
+      - info:
+          name: listar promoções publicadas
+          type: http
+          seq: 2
+        http:
+          method: GET
+          url: http://localhost:8080/v1/promocao
+          auth: inherit
+        settings:
+          encodeUrl: true
+          timeout: 0
+          followRedirects: true
+          maxRedirects: 5
+      - info:
+          name: registrar interesse em categorias
+          type: http
+          seq: 4
+        http:
+          method: POST
+          url: http://localhost:8080/v1/user/interesse
+          headers:
+            - name: X-Requisitor
+              value: ''
+            - name: X-Assinatura
+              value: ''
+          body:
+            type: json
+            data: |-
+              {
+                "usuarioId": 1,
+                "categoriasInteresse": [2, 3]
+              }
+          auth: inherit
+        settings:
+          encodeUrl: true
+          timeout: 0
+          followRedirects: true
+          maxRedirects: 5
+      - info:
+          name: votar em promoções
+          type: http
+          seq: 3
+        http:
+          method: POST
+          url: http://localhost:8080/v1/promocao/votar
+          headers:
+            - name: X-Requisitor
+              value: Loja
+            - name: X-Assinatura
+              value: ''
+          body:
+            type: json
+            data: |-
+              {
+                "idPromocao": 2,
+                "votoRecebido": 1
+              }
+          auth: inherit
+        runtime:
+          scripts:
+            - type: before-request
+              code: |-
+                const crypto = require('crypto');
+
+                const pk = bru.getEnvVar("LOJA_PK");
+                if (!pk) throw new Error("LOJA_PK não encontrada no Environment!");
+
+                const rawBody = req.body;
+
+                // Função para formatar o objeto simulando o Jackson do Java
+                const formatForJava = (obj) => {
+                  return JSON.stringify(obj, (key, value) => {
+                    return value;
+                  }).replace(/"(\d+\.\d+)"/g, '$1'); // Remove as aspas dos números que o toFixed colocou
+                };
+
+                const message = formatForJava(rawBody);
+
+                // O restante do seu script de assinatura (crypto.createSign...) continua igual
+
+                // Agora, com o allowNodejs: true, isso AQUI VAI FUNCIONAR:
+                const sign = crypto.createSign('RSA-SHA256');
+                sign.update(message);
+                const signature = sign.sign(pk, 'base64');
+
+                // Define o Header que o seu Gateway vai ler
+                req.setHeader("X-Assinatura", signature);
+                console.log("Mensagem assinada:", message);
+                console.log("Assinatura:", signature);
+        settings:
+          encodeUrl: true
+          timeout: 0
+          followRedirects: true
+          maxRedirects: 5
+      - info:
+          name: cadastrar usuario
+          type: http
+          seq: 6
+        http:
+          method: POST
+          url: http://localhost:8080/v1/user
+          headers:
+            - name: X-Requisitor
+              value: ''
+            - name: X-Assinatura
+              value: ''
+          body:
+            type: json
+            data: |-
+              {
+                "nome": "chico",
+                "senha": "123",
+                "categoriasInteresse": [1, 2]
+              }
+          auth: inherit
+        settings:
+          encodeUrl: true
+          timeout: 0
+          followRedirects: true
+          maxRedirects: 5
+      - info:
+          name: cadastrar loja
+          type: http
+          seq: 7
+        http:
+          method: POST
+          url: http://localhost:8080/v1/loja
+          headers:
+            - name: X-Requisitor
+              value: ''
+            - name: X-Assinatura
+              value: ''
+          body:
+            type: json
+            data: |-
+              {
+                "nome": "Loja 123",
+                "email": "loja123@email.com",
+                "imagemUrl": "http://site.com/image"
+              }
+          auth: inherit
+        settings:
+          encodeUrl: true
+          timeout: 0
+          followRedirects: true
+          maxRedirects: 5
+bundled: true
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+    exportedAt: '2026-06-10T04:49:33.136Z'
+    exportedUsing: Bruno
