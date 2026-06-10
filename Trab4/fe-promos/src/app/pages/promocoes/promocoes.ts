@@ -1,152 +1,197 @@
-import { Component, OnInit, OnDestroy, signal } from '@angular/core';
+import { Component, OnDestroy, signal, computed, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms'; // OBRIGATÓRIO adicionar para usar o [(ngModel)] no input de ID
 import { Subscription } from 'rxjs';
 import { Promocao } from "../../components/promocao/promocao";
-import { Filtro } from "../../compoents/filtro/filtro";
 import { PromocaoService } from "../../services/promocao-service";
-import { PromocaoModel } from "../../models/promocaoModel";
-
-export interface Toast {
-  id: number;
-  promocao: PromocaoModel;
-}
-
-let toastIdCounter = 0;
-const TOAST_DURATION = 5000; // Duração do toast em milissegundos
 
 @Component({
   selector: 'app-promocoes',
   standalone: true,
-  imports: [CommonModule, Promocao, Filtro],
+  imports: [CommonModule, FormsModule, Promocao], // Adicionado FormsModule aqui
   templateUrl: './promocoes.html',
   styleUrl: './promocoes.css',
 })
-export class Promocoes implements OnInit, OnDestroy {
+export class Promocoes implements OnDestroy {
   private LIMITE_HOT_DEAL = 5;
   private sseSubscription!: Subscription;
-  readonly toasts = [] as Toast[];
   
-  private REQUISITOR_MOCK = "consumidor" + Math.floor(Math.random() * 1000); // Gera um ID de consumidor aleatório para testes
+  // Variáveis de controle de sessão do usuário
+  usuarioId = signal<number | null>(null); // ID oficial consolidado
+  inputIdForm = signal<number | null>(null); // Vinculado ao campo de texto da tela
+  
+  private REQUISITOR_MOCK = 0;
   private ASSINATURA_MOCK = "assinatura_digital_hash_aqui";
 
-  listaPromocoes: any[] = [];
-  promocoesFiltradas: any[] = [];
-
-  filtrosAtivos = {
-    categoriaId: null as number | null,
+  listaPromocoes = signal<any[]>([]);
+  listaCategorias = signal<any[]>([]);
+  
+  filtrosAtivos = signal({
+    categoriaIds: [] as number[], 
     apenasDestaques: false
-  };
+  });
 
-  // Injeção do service criado
-  constructor(private promocaoService: PromocaoService) {}
+  promocoesFiltradas = computed(() => {
+    const lista = this.listaPromocoes();
+    const filtros = this.filtrosAtivos();
 
-  ngOnInit(): void {
+    return lista.filter(promo => {
+      const atendeCategoria = filtros.categoriaIds.length === 0 || 
+                             (promo.categoria && filtros.categoriaIds.includes(promo.categoria.id));
+      const atendeDestaque = !filtros.apenasDestaques || promo.status === 'DESTAQUE';
+      return atendeCategoria && atendeDestaque;
+    });
+  });
+
+  constructor(private promocaoService: PromocaoService, private ngZone: NgZone) {}
+
+  conectarUsuario() {
+    const idDigitado = this.inputIdForm();
+    
+    if (!idDigitado || idDigitado <= 0) {
+      alert('Por favor, insira um ID de usuário válido antes de conectar.');
+      return;
+    }
+
+    this.usuarioId.set(idDigitado);
+    
+    this.REQUISITOR_MOCK = idDigitado;
+
+    console.log(`Usuário ${idDigitado} definido. Inicializando conexões com o servidor...`);
+
     this.carregarPromocoesDoServidor();
     this.conectarAoCanalSse();
   }
 
-  ngOnDestroy(): void {
-    // Garante que o streaming será fechado se o usuário mudar de página
-    if (this.sseSubscription) {
-      this.sseSubscription.unsubscribe();
-    }
-  }
-
-  // Busca inicial das promoções via REST comum
   private carregarPromocoesDoServidor() {
     this.promocaoService.listar().subscribe({
-      next: (dados) => {
-        this.listaPromocoes = dados;
-        this.recalcularListaExibida();
-      },
+      next: (dados) => this.listaPromocoes.set(dados),
       error: (err) => console.error('Erro ao buscar promoções iniciais:', err)
     });
   }
 
-  // Inicia a escuta SSE ativa em background
   private conectarAoCanalSse() {
     this.sseSubscription = this.promocaoService
       .ouvirStreamNotificacoes(this.REQUISITOR_MOCK)
       .subscribe({
-        next: (novaPromocao) => {
-          console.log('Nova promoção recebida em tempo real via SSE:', novaPromocao);
-          this.exibirToast(novaPromocao);
-          
-          // Verifica se a promoção já existe na nossa lista atual (evita duplicar)
-          const index = this.listaPromocoes.findIndex(p => p.id === novaPromocao.id);
-          
-          if (index !== -1) {
-            // Atualiza o registro existente
-            this.listaPromocoes[index] = novaPromocao;
-          } else {
-            // Insere a nova promoção no início da lista da interface gráfica
-            this.listaPromocoes.unshift(novaPromocao);
-          }
-          
-          this.recalcularListaExibida();
+        next: (evento) => {
+          this.ngZone.run(() => {
+            console.log('Evento SSE recebido:', evento);
+            
+            if (evento.type === 'CATEGORIAS') {
+              console.log('Categorias carregadas do banco via SSE:', evento.data);
+              this.listaCategorias.set(evento.data);
+            } 
+            
+            else if (evento.type === 'INTERESSES') {
+              console.log('Interesses do usuário vindos do banco via SSE:', evento.data);
+              this.sincronizarInteressesIniciais(evento.data);
+            } 
+            
+            else if (evento.type === 'NOVA_PROMOCAO') {
+              const novaPromocao = evento.data;
+              console.log('Nova promoção recebida via SSE:', novaPromocao);
+              this.listaPromocoes.update(lista => {
+                const index = lista.findIndex(p => p.id === novaPromocao.id);
+                return index !== -1 
+                  ? (lista[index] = novaPromocao, [...lista]) 
+                  : [novaPromocao, ...lista];
+              });
+            }
+
+          });
         },
         error: (err) => console.error('Erro na conexão SSE streaming:', err)
       });
   }
 
-  private exibirToast(promocao: any) {
-    const toast: Toast = {
-      id: ++toastIdCounter,
-      promocao
-    };
-    this.toasts.unshift(toast);
-    setTimeout(() => 
-      { this.toasts.filter(t => t.id !== toast.id); }, 
-      TOAST_DURATION
-    );
+  private sincronizarInteressesIniciais(interesses: string[]) {
+    const categoriasDoBanco = this.listaCategorias();
+
+    const idsMapeados = interesses.map(interesse => {
+      // Se o interesse enviado pelo servidor já for o ID em formato String (Ex: "1")
+      if (!isNaN(Number(interesse))) {
+        return Number(interesse);
+      }
+      // Se enviado o Nome (Ex: "Eletrônicos"), busca o id correspondente no objeto Categoria
+      const achado = categoriasDoBanco.find(c => c.nome.toLowerCase() === interesse.toLowerCase());
+      return achado ? achado.id : null;
+    }).filter(id => id !== null) as number[];
+
+    // Marca os checkboxes na interface na mesma hora
+    this.filtrosAtivos.update(f => ({ ...f, categoriaIds: idsMapeados }));
   }
 
-  aplicarFiltros(event: { categoriaId: number | null; apenasDestaques: boolean }) {
-    this.filtrosAtivos.categoriaId = event.categoriaId;
-    this.filtrosAtivos.apenasDestaques = event.apenasDestaques;
-    this.recalcularListaExibida();
+  alternarFiltroCategoria(categoriaId: number, evento: Event) {
+    const checkbox = evento.target as HTMLInputElement;
+    const estaSelecionado = checkbox.checked;
+    const idAtual = this.usuarioId();
+
+    if (!idAtual) return; // Segurança caso não tenha usuário
+
+    if (estaSelecionado) {
+      this.promocaoService.cadastrarInteresse(
+        idAtual, 
+        [categoriaId],
+        "REQUISITOR_MOCK",
+        this.ASSINATURA_MOCK
+      ).subscribe({
+        next: (idAtualizados: number[]) => {
+          console.log('Interesse cadastrado no banco, IDs atualizados:', idAtualizados);
+          this.filtrosAtivos.update(f => ({ ...f, categoriaIds: idAtualizados }));
+        },
+        error: (err) => {
+          console.error('Erro no POST interesse, aplicando local:', err);
+          this.filtrosAtivos.update(f => ({ ...f, categoriaIds: [...f.categoriaIds, categoriaId] }));
+        }
+      });
+    } else {
+      this.promocaoService.removerInteresse(
+        idAtual, 
+        [categoriaId], 
+        "REQUISITOR_MOCK", 
+        this.ASSINATURA_MOCK
+      ).subscribe({
+        next: (idAtualizados: number[]) => {
+          console.log('Interesse removido no banco, IDs atualizados:', idAtualizados);
+          this.filtrosAtivos.update(f => ({ ...f, categoriaIds: idAtualizados }));
+        },
+        error: (err) => {
+          console.error('Erro no POST remover interesse, aplicando local:', err);
+          this.filtrosAtivos.update(f => ({ ...f, categoriaIds: f.categoriaIds.filter(id => id !== categoriaId) }));
+        }
+      });
+    }
   }
 
-  private recalcularListaExibida() {
-    this.promocoesFiltradas = this.listaPromocoes.filter(promo => {
-      const atendeCategoria = this.filtrosAtivos.categoriaId === null || 
-                               promo.categoria.id === this.filtrosAtivos.categoriaId;
-      
-      const atendeDestaque = !this.filtrosAtivos.apenasDestaques || 
-                             promo.status === 'DESTAQUE';
-
-      return atendeCategoria && atendeDestaque;
-    });
+  alternarFiltroDestaques(evento: Event) {
+    const checkbox = evento.target as HTMLInputElement;
+    this.filtrosAtivos.update(f => ({ ...f, apenasDestaques: checkbox.checked }));
   }
 
-  // Atualizado para disparar a requisição POST REST real para o seu Backend Spring Boot
   processarVoto(evento: { promoId: number; tipo: 'POSITIVO' | 'NEGATIVO' }) {
-    this.promocaoService.votar(
-      evento.promoId, 
-      evento.tipo, 
-      this.REQUISITOR_MOCK, 
-      this.ASSINATURA_MOCK
-    ).subscribe({
-      next: (promocaoAtualizada) => {
-        // O backend retorna o estado atualizado do objeto promoção
-        const index = this.listaPromocoes.findIndex(p => p.id === evento.promoId);
-        if (index !== -1) {
-          this.listaPromocoes[index] = promocaoAtualizada;
-          this.recalcularListaExibida();
-        }
-      },
-      error: (err) => {
-        console.error('Falha ao computar voto no backend:', err);
-        
-        // Fallback Local defensivo: se sua API REST ainda não estiver de pé,
-        // ele computa em tela para você não travar os seus testes de layout frontend:
-        const promocao = this.listaPromocoes.find(p => p.id === evento.promoId);
-        if (promocao) {
-          evento.tipo === 'POSITIVO' ? promocao.votos++ : promocao.votos--;
-          promocao.status = promocao.votos >= this.LIMITE_HOT_DEAL ? 'DESTAQUE' : 'NORMAL';
-          this.recalcularListaExibida();
-        }
+    this.promocaoService.votar(evento.promoId, evento.tipo, "REQUISITOR_MOCK", this.ASSINATURA_MOCK).subscribe({
+      next: (atualizada) => {
+        this.listaPromocoes.update(lista => {
+          const idx = lista.findIndex(p => p.id === evento.promoId);
+          if (idx !== -1) lista[idx] = atualizada;
+          return [...lista];
+        });
       }
     });
+  }
+
+  // Permite deslogar ou trocar de usuário para testar cenários diferentes
+  desconectar() {
+    if (this.sseSubscription) {
+      this.sseSubscription.unsubscribe();
+    }
+    this.usuarioId.set(null);
+    this.listaPromocoes.set([]);
+    this.filtrosAtivos.set({ categoriaIds: [], apenasDestaques: false });
+  }
+
+  ngOnDestroy(): void {
+    if (this.sseSubscription) this.sseSubscription.unsubscribe();
   }
 }

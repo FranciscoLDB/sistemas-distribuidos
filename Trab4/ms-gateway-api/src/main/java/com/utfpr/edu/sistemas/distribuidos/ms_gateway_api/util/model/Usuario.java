@@ -24,12 +24,7 @@ public class Usuario {
     private String nome;
     private String senha;
 
-    @ManyToMany
-    @JoinTable(
-            name = "interesses",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "categoria_id")
-    )
+    @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     private List<Categoria> categorias = new ArrayList<>();
 
     public void adicionarInteresse(Categoria categoria) {

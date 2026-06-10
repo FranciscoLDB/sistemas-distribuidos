@@ -4,6 +4,7 @@ import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoInte
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoVotoReq;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service.PromotionService;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoCadReq;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Promocao;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -11,7 +12,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Categoria;
+
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,6 +29,8 @@ public class PromotionController {
     private final PromotionService promotionService;
 
     private static final Map<String, SseEmitter> emissoresSse = new ConcurrentHashMap<>();
+
+    private static final Map<String, List<String>> interessesConsumidores = new ConcurrentHashMap<>();
 
     @PostMapping("/promocao")
     public ResponseEntity<?> cadastrarPromocao(
@@ -70,55 +76,86 @@ public class PromotionController {
 
         SseEmitter emitter = new SseEmitter(3600_000L);
         emissoresSse.put(consumidorId, emitter);
+        // Busca interesses do consumidor e mantém em memória
+        buscarInteressesConsumidor(consumidorId);
+
+        // Envia lista de categorias disponíveis e interesses do usuário assim que conectar
+        try {
+            List<Categoria> categorias = promotionService.listarCategorias();
+            emitter.send(SseEmitter.event()
+                    .name("CATEGORIAS")
+                    .data(categorias, MediaType.APPLICATION_JSON));
+
+            List<String> interesses = interessesConsumidores.getOrDefault(consumidorId, List.of());
+            emitter.send(SseEmitter.event()
+                    .name("INTERESSES")
+                    .data(interesses, MediaType.APPLICATION_JSON));
+        } catch (IOException e) {
+            log.error("[SSE] Falha ao enviar listas iniciais para {}: {}", consumidorId, e.getMessage());
+            emitter.complete();
+            emissoresSse.remove(consumidorId);
+            interessesConsumidores.remove(consumidorId);
+            return emitter;
+        }
 
         // Remove do mapa quando a conexão terminar com sucesso ou der timeout
         emitter.onCompletion(() -> {
             log.info("[SSE] Conexão completada para o cliente {}.", consumidorId);
             emissoresSse.remove(consumidorId);
+            interessesConsumidores.remove(consumidorId);
         });
 
         emitter.onTimeout(() -> {
             log.warn("[SSE] Timeout de conexão atingido para o cliente {}.", consumidorId);
             emitter.complete();
             emissoresSse.remove(consumidorId);
+            interessesConsumidores.remove(consumidorId);
         });
 
         emitter.onError((ex) -> {
             log.error("[SSE] Erro na conexão do cliente {}: {}", consumidorId, ex.getMessage());
             emitter.complete();
             emissoresSse.remove(consumidorId);
+            interessesConsumidores.remove(consumidorId);
         });
-
-        // Envia um evento inicial de "boas-vindas" apenas para confirmar que a conexão abriu com sucesso
-        try {
-            emitter.send(SseEmitter.event()
-                    .name("CONNECT")
-                    .data("Conexão SSE estabelecida com sucesso!"));
-        } catch (IOException e) {
-            log.error("[SSE] Falha ao enviar evento de conexão inicial para {}", consumidorId);
-            emitter.complete();
-            emissoresSse.remove(consumidorId);
-        }
 
         return emitter;
     }
 
-    public static void notificarNovaPromocao(Object dadosPromocao) {
+    public static void notificarNovaPromocao(Promocao dadosPromocao) {
         log.info("[API][SSE][NOTIFICAR] Disparando nova promoção em tempo real para todos os clientes.");
 
         // Percorre todas as conexões ativas enviando o evento
         emissoresSse.forEach((consumidorId, emitter) -> {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("NOVA_PROMOCAO") // Nome do evento capturado no Angular
-                        .id(String.valueOf(System.currentTimeMillis()))
-                        .data(dadosPromocao, MediaType.APPLICATION_JSON)); // Converte o DTO para JSON automaticamente
-            } catch (IOException e) {
-                log.warn("[SSE] Falha ao enviar notificação para {}, removendo conexão quebrada.", consumidorId);
-                emitter.complete();
-                emissoresSse.remove(consumidorId);
+            if (interessesConsumidores.get(consumidorId).contains(dadosPromocao.getCategoria().getNome())) {
+                notificaUsuario(dadosPromocao, consumidorId, emitter);
             }
         });
+    }
+
+    private void buscarInteressesConsumidor(String consumidorId) {
+        List<String> interesses = promotionService.buscarInteressesConsumidor(consumidorId);
+        interessesConsumidores.put(consumidorId, interesses);
+        log.info("[API][SSE][INTERESSES] Interesses do consumidor {}: {}", consumidorId, interesses);
+    }
+
+    private static void notificaUsuario(Promocao dadosPromocao, String consumidorId, SseEmitter emitter) {
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("NOVA_PROMOCAO")
+                    .id(String.valueOf(System.currentTimeMillis()))
+                    .data(dadosPromocao, MediaType.APPLICATION_JSON));
+            log.info("[API][SSE][NOTIFICAR] Promoção '{}' enviada para consumidor {}.", dadosPromocao.getNomeProduto(), consumidorId);
+        } catch (IOException e) {
+            log.warn("[SSE] Falha ao enviar notificação para {}, removendo conexão quebrada.", consumidorId);
+            emitter.complete();
+            emissoresSse.remove(consumidorId);
+        }
+    }
+
+    public static void atualizarInteressesConsumidor(String consumidorId, List<String> novosInteresses) {
+        interessesConsumidores.put(consumidorId, novosInteresses);
+        log.info("[API][SSE][INTERESSES] Interesses do consumidor {} atualizados: {}", consumidorId, novosInteresses);
     }
 
 }

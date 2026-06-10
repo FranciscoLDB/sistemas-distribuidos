@@ -9,10 +9,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Slf4j
 @RestController
 @RequestMapping("/v1")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "*")
 public class RegisterController {
 
     private final RegisterService registerService;
@@ -36,20 +39,23 @@ public class RegisterController {
     }
 
     @PostMapping("/user/interesse")
-    public ResponseEntity<?> cadastrarInteresse(
+    public ResponseEntity<List<Long>> cadastrarInteresse(
             @RequestHeader("X-Requisitor") String requisitor,
             @RequestHeader("X-Assinatura") String assinatura,
             @RequestBody UserInteresseRequest request) throws Exception {
         log.info("[API][USUARIO][INTERESSE][CADASTRAR] Endpoint de cadastro de interesse do usuário acessado.");
-        return ResponseEntity.ok(registerService.cadastrarInteresseUsuario(request, assinatura, requisitor));
+
+        List<Long> interessesAtualizados = registerService.cadastrarInteresseUsuario(request, assinatura, requisitor);
+        return ResponseEntity.ok(interessesAtualizados);
     }
 
     @DeleteMapping("/user/interesse")
-    public ResponseEntity<?> removerInteresse(
+    public ResponseEntity<List<Long>> removerInteresse(
             @RequestHeader("X-Requisitor") String requisitor,
             @RequestHeader("X-Assinatura") String assinatura,
             @RequestBody UserInteresseRequest request) throws Exception {
         log.info("[API][USUARIO][INTERESSE][REMOVER] Endpoint de remoção de interesse do usuário acessado.");
-        return ResponseEntity.ok(registerService.removerInteresseUsuario(request, assinatura, requisitor));
+        List<Long> interessesAtualizados = registerService.removerInteresseUsuario(request, assinatura, requisitor);
+        return ResponseEntity.ok(interessesAtualizados);
     }
 }

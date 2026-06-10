@@ -1,5 +1,6 @@
 package com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.service;
 
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.PromotionController;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.CreateLojaRequest;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.UserInteresseRequest;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.CreateUserRequest;
@@ -10,10 +11,12 @@ import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Categoria;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Loja;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Usuario;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @AllArgsConstructor
 public class RegisterService {
@@ -35,22 +38,30 @@ public class RegisterService {
         return "Loja cadastrada com sucesso!";
     }
 
-    public String cadastrarInteresseUsuario(UserInteresseRequest request, String assinatura, String requisitor) {
+    public List<Long> cadastrarInteresseUsuario(UserInteresseRequest request, String assinatura, String requisitor) {
         Usuario usuario = usuarioRepository.findById(request.usuarioId())
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado com id: " + request.usuarioId()));
+        log.info("[SERVICE][USUARIO][INTERESSE][CADASTRAR] Cadastrando interesse do usuário com id: {}, categorias: {}", request.usuarioId(), request.categoriasInteresse());
+        log.info("[SERVICE][USUARIO][INTERESSE][CADASTRAR] Categorias a serem adicionadas: {}", request.categoriasInteresse());
         List<Categoria> categorias = getCategoriasByIds(request.categoriasInteresse());
         categorias.forEach(usuario::adicionarInteresse);
         usuarioRepository.save(usuario);
-        return "Interesse do usuário cadastrado com sucesso!";
+        PromotionController.atualizarInteressesConsumidor(usuario.getId().toString(), usuario.getCategorias().stream().map(Categoria::getNome).toList());
+        log.info("[SERVICE][USUARIO][INTERESSE][CADASTRAR] Interesses do usuário atualizados: {}", usuario.getCategorias());
+        return usuario.getCategorias().stream().map(Categoria::getId).toList();
     }
 
-    public String removerInteresseUsuario(UserInteresseRequest request, String assinatura, String requisitor) {
+    public List<Long> removerInteresseUsuario(UserInteresseRequest request, String assinatura, String requisitor) {
         Usuario usuario = usuarioRepository.findById(request.usuarioId())
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado com id: " + request.usuarioId()));
+        log.info("[SERVICE][USUARIO][INTERESSE][REMOVER] Removendo interesse do usuário com id: {}, categorias: {}", request.usuarioId(), request.categoriasInteresse());
+        log.info("[SERVICE][USUARIO][INTERESSE][REMOVER] Categorias a serem removidas: {}", request.categoriasInteresse());
         List<Categoria> categorias = getCategoriasByIds(request.categoriasInteresse());
         usuario.getCategorias().removeAll(categorias);
         usuarioRepository.save(usuario);
-        return "Interesse do usuário removido com sucesso!";
+        PromotionController.atualizarInteressesConsumidor(usuario.getId().toString(), usuario.getCategorias().stream().map(Categoria::getNome).toList());
+        log.info("[SERVICE][USUARIO][INTERESSE][REMOVER] Interesses do usuário atualizados: {}", usuario.getCategorias());
+        return usuario.getCategorias().stream().map(Categoria::getId).toList();
     }
 
     private List<Categoria> getCategoriasByIds(List<Long> categoriaIds) {

@@ -4,8 +4,12 @@ import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.config.RabbitConfig;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoCadReq;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.input.dto.PromocaoVotoReq;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.repository.PromotionRepository;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.repository.UsuarioRepository;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.repository.CategoriaRepository;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Categoria;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Evento;
 import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Promocao;
+import com.utfpr.edu.sistemas.distribuidos.ms_gateway_api.util.model.Usuario;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -13,6 +17,8 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -24,6 +30,8 @@ public class PromotionService {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private final RabbitTemplate rabbitTemplate;
     private final PromotionRepository promotionRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final CategoriaRepository categoriaRepository;
 
     public Object cadastrarPromocao(PromocaoCadReq request, String assinatura, String requisitor) throws Exception {
         // Converte requesicao para mensagem de evento
@@ -51,5 +59,25 @@ public class PromotionService {
         rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, RabbitConfig.PROMOCAO_VOTO_ROUTING_KEY, evento);
         log.info("[PROMOCAO][VOTAR] Evento publicado no RabbitMQ: {}", evento);
         return "Voto registrado com sucesso!";
+    }
+
+    public List<String> buscarInteressesConsumidor(String consumidorId) {
+        // Lógica para buscar interesses do consumidor (exemplo: consulta ao banco de dados)
+        Optional<Usuario> usuarioOpt = usuarioRepository.findById(Long.parseLong(consumidorId));
+        if (usuarioOpt.isPresent()) {
+            Usuario usuario = usuarioOpt.get();
+            log.info("[INTERESSES][BUSCAR] Interesses do consumidor {}: {}", consumidorId, usuario.getCategorias());
+            return usuario.getCategorias().stream()
+                    .map(Categoria::getNome)
+                    .toList();
+        }
+        return List.of();
+    }
+
+    public List<Categoria> listarCategorias() {
+        Iterable<Categoria> all = categoriaRepository.findAll();
+        List<Categoria> result = new ArrayList<>();
+        all.forEach(result::add);
+        return result;
     }
 }

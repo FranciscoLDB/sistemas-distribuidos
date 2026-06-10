@@ -49,19 +49,19 @@ public class PromotionListener {
     }
 
     private void processarPromocaoPublicada(Promocao promocao) {
-        System.out.println("[nova_publicacao] " + promocao.getNomeProduto());
+        log.info("[nova_publicacao] {}", promocao.getNomeProduto());
         // Lógica: Salvar no repositório
 //        PromotionController.notificarNovaPromocao(promocao);
     }
 
     private void processarPromocaoDestaque(Promocao promocao) {
-        System.out.println("[destaque] Promoção em destaque: " + promocao.getNomeProduto());
+        log.info("[destaque] Promoção em destaque: {}", promocao.getNomeProduto());
         // Lógica: Disparar SSE para clientes (Hot Deals)
         PromotionController.notificarNovaPromocao(promocao);
     }
 
     private void processarPromocaoCategoria(Promocao promocao, String categoriaTopico) {
-        System.out.println("[categoria] Nova promoção na categoria '" + categoriaTopico + "': " + promocao.getNomeProduto());
+        log.info("[categoria] Nova promoção na categoria '{}': {}", categoriaTopico, promocao.getNomeProduto());
         // Lógica: Buscar no banco quem segue essa categoria e disparar SSE
         PromotionController.notificarNovaPromocao(promocao);
     }
