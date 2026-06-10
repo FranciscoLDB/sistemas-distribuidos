@@ -57,7 +57,7 @@ public class PromotionListener {
     private void processarPromocaoDestaque(Promocao promocao) {
         log.info("[destaque] Promoção em destaque: {}", promocao.getNomeProduto());
         // Lógica: Disparar SSE para clientes (Hot Deals)
-        PromotionController.notificarNovaPromocao(promocao);
+        PromotionController.notificarPromocaoDestaque(promocao);
     }
 
     private void processarPromocaoCategoria(Promocao promocao, String categoriaTopico) {

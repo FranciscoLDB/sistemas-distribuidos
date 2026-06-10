@@ -41,6 +41,14 @@ export class PromocaoService {
         });
       });
 
+      // Escuta eventos "PROMOCAO_DESTAQUE"
+      eventSource.addEventListener('PROMOCAO_DESTAQUE', (event: MessageEvent) => {
+        this.zone.run(() => {
+          const promoDestaque = JSON.parse(event.data);
+          observer.next({ type: 'PROMOCAO_DESTAQUE', data: promoDestaque });
+        });
+      });
+
       // Escuta o evento de CATEGORIAS do seu try/catch Java
       eventSource.addEventListener('CATEGORIAS', (event: MessageEvent) => {
         this.zone.run(() => {

@@ -128,8 +128,17 @@ public class PromotionController {
         // Percorre todas as conexões ativas enviando o evento
         emissoresSse.forEach((consumidorId, emitter) -> {
             if (interessesConsumidores.get(consumidorId).contains(dadosPromocao.getCategoria().getNome())) {
-                notificaUsuario(dadosPromocao, consumidorId, emitter);
+                notificaUsuario(dadosPromocao, consumidorId, emitter, "NOVA_PROMOCAO");
             }
+        });
+    }
+
+    public static void notificarPromocaoDestaque(Promocao dadosPromocao) {
+        log.info("[API][SSE][NOTIFICAR] Disparando promoção em destaque para todos os clientes.");
+
+        // Percorre todas as conexões ativas enviando o evento
+        emissoresSse.forEach((consumidorId, emitter) -> {
+            notificaUsuario(dadosPromocao, consumidorId, emitter, "PROMOCAO_DESTAQUE");
         });
     }
 
@@ -139,10 +148,10 @@ public class PromotionController {
         log.info("[API][SSE][INTERESSES] Interesses do consumidor {}: {}", consumidorId, interesses);
     }
 
-    private static void notificaUsuario(Promocao dadosPromocao, String consumidorId, SseEmitter emitter) {
+    private static void notificaUsuario(Promocao dadosPromocao, String consumidorId, SseEmitter emitter, String eventName) {
         try {
             emitter.send(SseEmitter.event()
-                    .name("NOVA_PROMOCAO")
+                    .name(eventName)
                     .id(String.valueOf(System.currentTimeMillis()))
                     .data(dadosPromocao, MediaType.APPLICATION_JSON));
             log.info("[API][SSE][NOTIFICAR] Promoção '{}' enviada para consumidor {}.", dadosPromocao.getNomeProduto(), consumidorId);
