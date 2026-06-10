@@ -10,10 +10,10 @@ import { CommonModule } from '@angular/common';
 })
 export class Promocao {
   @Input({ required: true }) promo!: any;
-  @Output() votoAlterado = new EventEmitter<{ promoId: number; tipo: 'POSITIVO' | 'NEGATIVO' }>();
+  @Output() votoAlterado = new EventEmitter<{ idPromocao: number; votoRecebido:number }>();
 
-  votar(tipo: 'POSITIVO' | 'NEGATIVO') {
-    this.votoAlterado.emit({ promoId: this.promo.id, tipo });
+  votar(voto: number) {
+    this.votoAlterado.emit({ idPromocao: this.promo.id, votoRecebido: voto });
   }
 
   calcularDesconto(): number {

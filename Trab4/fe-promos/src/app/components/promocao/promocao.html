@@ -39,7 +39,7 @@
 
     <div class="flex items-center justify-between border-t border-gray-50 pt-3 mt-auto">
         <div class="flex items-center gap-1.5">    
-            <button (click)="votar('NEGATIVO')" 
+            <button (click)="votar(-1)" 
                     title="Votar contra"
                     class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors group">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 group-active:scale-90 transition-transform">
@@ -53,7 +53,7 @@
                 {{ promo.votos }} {{ promo.votos === 1 || promo.votos === -1 ? 'voto' : 'votos' }}
             </span>
 
-            <button (click)="votar('POSITIVO')" 
+            <button (click)="votar(1)" 
                     title="Votar a favor"
                     class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-lg transition-colors group">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 group-active:scale-90 transition-transform">

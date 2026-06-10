@@ -15,13 +15,14 @@ export class PromocaoService {
   }
 
   // 2. POST - Envio do voto para o backend (MS Gateway -> RabbitMQ)
-  votar(promoId: number, tipo: 'POSITIVO' | 'NEGATIVO', requisitor: string, assinatura: string): Observable<any> {
+  votar(idPromocao: number, votoRecebido: number, requisitor: string, assinatura: string): Observable<any> {
     const headers = new HttpHeaders({
       'X-Requisitor': requisitor,
       'X-Assinatura': assinatura
     });
 
-    const body = { promoId, tipo };
+    const body = { idPromocao, votoRecebido };
+    console.log('Enviando voto para o backend:', body);
     return this.http.post(`${this.apiUrl}/promocao/votar`, body, { headers });
   }
 

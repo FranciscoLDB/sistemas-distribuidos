@@ -53,7 +53,7 @@ public class PromotionController {
             @RequestHeader("X-Assinatura") String assinatura,
             @RequestBody PromocaoVotoReq request) throws Exception {
         log.info("[API][PROMOCAO][VOTAR] Endpoint de votação de promoção acessado.");
-        return  ResponseEntity.ok(promotionService.votarPromocao(request, assinatura, requisitor));
+        return ResponseEntity.accepted().body(promotionService.votarPromocao(request, assinatura, requisitor));
     }
 
     @GetMapping(value = "/promocao/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

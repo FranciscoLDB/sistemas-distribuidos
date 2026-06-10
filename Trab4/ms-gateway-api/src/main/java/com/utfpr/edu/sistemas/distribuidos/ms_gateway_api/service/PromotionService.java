@@ -18,6 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -51,6 +52,7 @@ public class PromotionService {
     }
 
     public Object votarPromocao(PromocaoVotoReq request, String assinatura, String requisitor) throws Exception {
+        log.info("[PROMOCAO][VOTAR] Processando voto para promoção ID: {}, voto recebido: {}", request.idPromocao(), request.votoRecebido());
         // Converte requesicao para mensagem de evento
         String votoJson = objectMapper.writeValueAsString(request);
         Evento evento = new Evento(RabbitConfig.PROMOCAO_VOTO_ROUTING_KEY, votoJson, requisitor);
@@ -58,7 +60,7 @@ public class PromotionService {
 
         rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, RabbitConfig.PROMOCAO_VOTO_ROUTING_KEY, evento);
         log.info("[PROMOCAO][VOTAR] Evento publicado no RabbitMQ: {}", evento);
-        return "Voto registrado com sucesso!";
+        return Map.of("mensagem", "Voto registrado com sucesso!");
     }
 
     public List<String> buscarInteressesConsumidor(String consumidorId) {

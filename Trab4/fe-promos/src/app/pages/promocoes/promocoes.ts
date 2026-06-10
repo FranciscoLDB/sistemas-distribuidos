@@ -169,17 +169,30 @@ export class Promocoes implements OnDestroy {
     this.filtrosAtivos.update(f => ({ ...f, apenasDestaques: checkbox.checked }));
   }
 
-  processarVoto(evento: { promoId: number; tipo: 'POSITIVO' | 'NEGATIVO' }) {
-    this.promocaoService.votar(evento.promoId, evento.tipo, "REQUISITOR_MOCK", this.ASSINATURA_MOCK).subscribe({
-      next: (atualizada) => {
-        this.listaPromocoes.update(lista => {
-          const idx = lista.findIndex(p => p.id === evento.promoId);
-          if (idx !== -1) lista[idx] = atualizada;
-          return [...lista];
-        });
-      }
-    });
-  }
+  processarVoto(evento: { idPromocao: number; votoRecebido: number }) {
+  this.promocaoService.votar(evento.idPromocao, evento.votoRecebido, "REQUISITOR_MOCK", this.ASSINATURA_MOCK).subscribe({
+    next: (resposta) => {
+      // Como o backend respondeu OK, atualizamos o estado localmente
+      this.listaPromocoes.update(lista => {
+        const idx = lista.findIndex(p => p.id === evento.idPromocao);
+        if (idx !== -1) {
+          // Fazemos uma cópia do objeto para manter a imutabilidade
+          const promocaoAtualizada = { ...lista[idx] };
+          
+          // Incrementa ou decrementa os votos localmente baseado no que foi enviado
+          promocaoAtualizada.votos += evento.votoRecebido; 
+          
+          lista[idx] = promocaoAtualizada;
+        }
+        return [...lista];
+      });
+    },
+    error: (err) => {
+      console.error('Erro ao votar:', err);
+      // Aqui você poderia exibir um alerta amigável pro usuário
+    }
+  });
+}
 
   // Permite deslogar ou trocar de usuário para testar cenários diferentes
   desconectar() {
