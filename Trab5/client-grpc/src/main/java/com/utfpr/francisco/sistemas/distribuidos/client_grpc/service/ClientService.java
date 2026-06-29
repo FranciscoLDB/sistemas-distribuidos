@@ -44,6 +44,7 @@ public class ClientService {
         this.channel = ManagedChannelBuilder.forAddress("localhost", porta)
                 .usePlaintext()
                 .build();
+        indicePortaAtual = buscarIndexDaPorta(porta);
 
         this.apiServiceBlockingStub = ApiServiceGrpc.newBlockingStub(channel);
     }
@@ -65,7 +66,6 @@ public class ClientService {
                 if (!reply.getSuccess()){
                     System.out.println("Servidor " + PORTAS[indicePortaAtual] + " nao e lider!");
                     int portaLider = Integer.parseInt(reply.getLeaderUrl().split(":")[1]);
-                    indicePortaAtual = buscarIndexDaPorta(portaLider);
                     inicializarCanal(portaLider);
                     reply = apiServiceBlockingStub.requestCommand(request);
                 }

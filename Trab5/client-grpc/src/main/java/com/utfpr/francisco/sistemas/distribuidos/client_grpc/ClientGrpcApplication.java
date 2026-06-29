@@ -34,7 +34,8 @@ public class ClientGrpcApplication implements CommandLineRunner {
             System.out.println("----------------------------------");
             System.out.println("Escolha uma opção:");
             System.out.println("1 - Enviar Comando");
-            System.out.println("2 - Solicitar Logs (Mock)");
+            System.out.println("2 - Solicitar Logs");
+            System.out.println("3 - Mudar porta");
             System.out.println("0 - Sair");
             System.out.print("Opção: ");
 
@@ -62,6 +63,7 @@ public class ClientGrpcApplication implements CommandLineRunner {
                     System.out.print("Digite a porta nova: ");
                     String porta = scanner.nextLine();
                     clientService.inicializarCanal(Integer.parseInt(porta));
+                    break;
 
                 case "0":
                     System.out.println("Encerrando a aplicação...");

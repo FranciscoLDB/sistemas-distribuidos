@@ -55,6 +55,9 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
         self.last_heartbeat = time.time()
         self.peers = {}  # URLs dos pares
         self.leader_url = None
+        
+        # --- Controle de Pausa do Nó ---
+        self.is_paused = False
 
         # --- Estado Persistente (Raft) ---
         self.term = 0
@@ -93,6 +96,11 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
     def _resetar_timeout(self):
         """Reseta o relógio interno que dispara a eleição."""
         self.last_heartbeat = time.time()
+
+    def _bloquear_se_pausado(self):
+        """Mecanismo de trava para requisições externas enquanto o nó estiver pausado."""
+        while self.is_paused:
+            time.sleep(0.1)
 
     # =========================================================================
     # BLOCO 2: LÓGICA DE ELEIÇÃO (O QUE O CANDIDATO FAZ)
@@ -185,26 +193,20 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
         
         # Inicia a thread que vai disparar os heartbeats para os seguidores
         threading.Thread(target=self._loop_heartbeat, daemon=True).start()
-        #self._registrar_no_nameserver()
 
     # =========================================================================
     # BLOCO 3: LÓGICA DE REPLICAÇÃO (O QUE O LÍDER FAZ)
     # =========================================================================
-
-    # def _registrar_no_nameserver(self):
-    #     """Anuncia para a rede (Name Server) quem é o líder atual, para o Cliente achar."""
-    #     try:
-    #         ns = Pyro5.api.locate_ns()
-    #         ns.register("raft.leader", self.uri)
-    #         console.print("[green][NET] Leader registrado no Name Server (pyro5-ns) com sucesso![/green]")
-    #     except Exception:
-    #         console.print("[grey]Aviso: Name Server não encontrado na rede. Ignorando registro...[/grey]")
 
     def _loop_heartbeat(self):
         """Fica rodando em background enviando mensagens de vida e replicação continuamente."""
         console.print(f"\n[bold blue][>] Thread de sincronização do Líder iniciada![/bold blue]")
         
         while self.state == RaftState.LEADER.value:
+            if self.is_paused:
+                time.sleep(0.2)
+                continue
+
             for label, url in self.peers.items():
                 # Envia para cada nó em uma mini-thread separada para não travar o líder
                 threading.Thread(target=self._sincronizar_peer, args=(label, url), daemon=True).start()
@@ -286,10 +288,8 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
     # =========================================================================
 
     def request_vote(self, request, context):
-        """
-        Processa requisição de voto vinda de outro nó candidato.
-        Implementa a seção §5.2 e §5.4 do paper do Raft.
-        """
+        """Processa requisição de voto vinda de outro nó candidato."""
+        self._bloquear_se_pausado()
         
         # 1. Se o termo do candidato é menor que o meu, recuso na hora.
         if request.candidate_term < self.term:
@@ -301,20 +301,12 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
             self.state = RaftState.FOLLOWER.value
             self.votedFor = None # Reseta o voto para o novo termo
 
-        # 2. Verificação de Segurança do Log (§5.4.1)
-        # Um log é considerado mais atualizado se:
-        # a) O último termo do log do candidato for maior que o meu.
-        # b) Os termos forem iguais, mas o candidato tiver um log maior ou igual ao meu.
-        
         meu_ultimo_indice = len(self.log) - 1
         meu_ultimo_termo = self.log[meu_ultimo_indice].term if meu_ultimo_indice >= 0 else 0
         
         log_ok = (request.last_log_term > meu_ultimo_termo) or \
                 (request.last_log_term == meu_ultimo_termo and request.last_log_index >= meu_ultimo_indice)
 
-        # 3. Decisão de Voto
-        # Só voto se eu ainda não votei em ninguém (votedFor is None ou o próprio candidato)
-        # E se o log do candidato for confiável (log_ok).
         if (self.votedFor is None or self.votedFor == request.candidate_id) and log_ok:
             self.votedFor = request.candidate_id
             self._resetar_timeout() # Reseta o timer de eleição pois reconheci um candidato válido
@@ -322,11 +314,11 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
             console.print(f"[cyan][V] Voto concedido ao Nó {request.candidate_id} para o termo {request.candidate_term}[/cyan]")
             return raft_pb2.VoteReply(term=self.term, success=True)
     
-        # Caso contrário, recuso o voto
         return raft_pb2.VoteReply(term=self.term, success=False)
 
     def append_entries(self, request, context):
         """Processa heartbeats e dados recebidos do líder atual."""
+        self._bloquear_se_pausado()
         self._resetar_timeout()
 
         if request.leader_term >= self.term:
@@ -397,9 +389,9 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
         )
     
     def request_command(self, request, context):
+        self._bloquear_se_pausado()
         console.print(f"\n[cyan][>] Comando recebido do cliente: '{request.command}'[/cyan]")
         
-        # Se este nó não for o líder, avisa o cliente Java e passa a URL do líder real
         if self.state != RaftState.LEADER.value:
             return api_pb2.CommandReply(
                 success=False, 
@@ -415,28 +407,23 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
         )
 
     def request_log(self, request, context):
+        self._bloquear_se_pausado()
         console.print(f"\n[magenta][?] Cliente {request.client_id} solicitou logs.[/magenta]")
         
-        # Monta a lista repetida de mensagens do tipo 'Log'
         lista_de_logs = []
-        # for cmd in self.log:
-        #     lista_de_logs.append(api_pb2.Log(command=cmd.command))
         for i, log in enumerate(self.log):
             if i <= self.commitIndex:
                 lista_de_logs.append(api_pb2.Log(command=log.command))
             else:
                 break
             
-        # Retorna o LogReply passando a lista para o campo 'entries'
         return api_pb2.LogReply(entries=lista_de_logs)
-
 
     # =========================================================================
     # BLOCO 5: INTERFACE GRÁFICA (UI) E LOOP PRINCIPAL
     # =========================================================================
 
     def _calcular_cor_estado(self):
-        """Retorna a cor da barra baseada no estado atual (Verde=Follower, Magenta=Candidate, Amarelo=Leader)."""
         if self.state == RaftState.FOLLOWER.value:
             return "green"
         elif self.state == RaftState.CANDIDATE.value:
@@ -445,7 +432,6 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
             return "yellow"
 
     def _construir_descricao_progresso(self, decorrido):
-        """Monta o texto visual dinâmico que aparece no terminal."""
         color = self._calcular_cor_estado()
         comandos_log = [entrada.command for entrada in self.log]
         linha1 = f"[{color}]Estado: {self.state:<9}[/{color}] | Termo: {self.term} | Timeout: {self.timeout:.1f}s"
@@ -462,8 +448,21 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceService
         ) as progress:
             
             task_id = progress.add_task(f"Status ({self.node_label})", total=self.timeout)
+            decorrido = 0
+            
             while True:
                 time.sleep(0.1)
+                
+                # Se estiver pausado, congela a barra de carregamento e o relógio de timeout
+                if self.is_paused:
+                    progress.update(
+                        task_id, 
+                        description=f"[bold yellow]|| PAUSADO || {self.state:<9}[/bold yellow] | Termo: {self.term} | Log: {[e.command for e in self.log]}"
+                    )
+                    # Força o last_heartbeat a se mover junto com o relógio para o tempo decorrido estagnar
+                    self.last_heartbeat = time.time() - decorrido
+                    continue
+                
                 decorrido = time.time() - self.last_heartbeat
                 progress.update(
                     task_id, 
@@ -509,29 +508,47 @@ def iniciar_servidor():
     config = NODES_CONFIG[escolha]
     node = RaftNode(escolha, config['id'])
 
-    # Servidor 1: Apenas para comunicação interna do algoritmo Raft
     server_raft = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
     raft_pb2_grpc.add_RaftServiceServicer_to_server(node, server_raft)
-    server_raft.add_insecure_port(f"[::]:{config['port']}") # Porta 5001
+    server_raft.add_insecure_port(f"[::]:{config['port']}") 
 
-    # Servidor 2: Apenas para os clientes externos
     server_api = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
     api_pb2_grpc.add_ApiServiceServicer_to_server(node, server_api)
-    server_api.add_insecure_port(f"[::]:{config['port'] + 1000}") # Porta 6001
+    server_api.add_insecure_port(f"[::]:{config['port'] + 1000}") 
 
-    # Inicia ambos
     server_raft.start()
     server_api.start()
     console.print(f"[bold green][+] Servidor Raft iniciado na porta {config['port']}[/bold green]")
     console.print(f"[bold green][+] Servidor API iniciado na porta {config['port'] + 1000}[/bold green]")
     
-    # Inicia a thread responsável pela UI e pelo relógio do Timeout Raft
     thread_loop = threading.Thread(target=node.iniciar_loop_principal, daemon=True)
     thread_loop.start()
 
-    # Mantém a thread principal viva esperando o gRPC terminar
-    server_raft.wait_for_termination()
-    server_api.wait_for_termination()
+    # --- Instruções de Controle ---
+    console.print("\n[bold cyan][!] Controles de Execução Disponíveis:[/bold cyan]")
+    console.print("    Digite [bold yellow]'p' + Enter[/bold yellow] para Pausar / Retomar")
+    console.print("    Digite [bold red]'q' + Enter[/bold red] para Finalizar a aplicação\n")
+
+    # Substituição do wait_for_termination por um interpretador de comandos interativo
+    try:
+        while True:
+            comando = input().strip().lower()
+            if comando == 'p':
+                node.is_paused = not node.is_paused
+                if node.is_paused:
+                    console.print("[bold yellow][||] Aplicação PAUSADA. Sincronizações e timeouts congelados.[/bold yellow]")
+                else:
+                    console.print("[bold green][▶] Aplicação RETOMADA. Retornando ao fluxo normal.[/bold green]")
+            elif comando == 'q':
+                console.print("[bold red][X] Finalizando a aplicação de vez... Desligando servidores gRPC.[/bold red]")
+                break
+    except KeyboardInterrupt:
+        console.print("[bold red][X] Interrupção via teclado detectada. Desligando...[/bold red]")
+    finally:
+        # Finaliza os servidores gRPC imediatamente liberando as portas
+        server_raft.stop(0)
+        server_api.stop(0)
+        console.print("[bold grey]Servidores parados com sucesso. Processo encerrado.[/bold grey]")
 
 if __name__ == "__main__":
     iniciar_servidor()
