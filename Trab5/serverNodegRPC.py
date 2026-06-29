@@ -8,6 +8,8 @@ from concurrent import futures
 import grpc
 import raft_pb2
 import raft_pb2_grpc
+import api_pb2
+import api_pb2_grpc
 
 from rich.console import Console # type: ignore
 from rich.progress import Progress, BarColumn, TextColumn # type: ignore
@@ -41,7 +43,7 @@ class LogEntry:
         self.term = term
         self.command = command
 
-class RaftNode(raft_pb2_grpc.RaftServiceServicer):
+class RaftNode(raft_pb2_grpc.RaftServiceServicer, api_pb2_grpc.ApiServiceServicer):
     """Implementação de um nó Raft com eleição de líder e heartbeats."""
     
     def __init__(self, node_label, node_id):
@@ -52,6 +54,7 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer):
         self.timeout = random.uniform(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
         self.last_heartbeat = time.time()
         self.peers = {}  # URLs dos pares
+        self.leader_url = None
 
         # --- Estado Persistente (Raft) ---
         self.term = 0
@@ -171,6 +174,8 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer):
     def _tornar_se_lider(self):
         """Muda o estado para Líder, inicializa variáveis de replicação e inicia os heartbeats."""
         self.state = RaftState.LEADER.value
+        self.votedFor = None
+        self.leader_url = f"localhost:{NODES_CONFIG[self.node_label]['port'] + 1000}"
         
         # Inicializa variáveis de acompanhamento do log para cada seguidor (§5.3)
         self.nextIndex = {label: len(self.log) for label in self.peers}
@@ -181,7 +186,6 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer):
         # Inicia a thread que vai disparar os heartbeats para os seguidores
         threading.Thread(target=self._loop_heartbeat, daemon=True).start()
         #self._registrar_no_nameserver()
-
 
     # =========================================================================
     # BLOCO 3: LÓGICA DE REPLICAÇÃO (O QUE O LÍDER FAZ)
@@ -253,7 +257,7 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer):
                         self._atualizar_commit_index() 
                 else:
                     # Se rejeitou, volta o nextIndex
-                    self.nextIndex[label] = max(0, resposta.last_commit_index + 1)
+                    self.nextIndex[label] = max(0, resposta.last_commit_index)
                     
         except grpc.RpcError as e:
             pass
@@ -343,11 +347,14 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer):
                 success=False,
                 last_commit_index=self.commitIndex,
             )
+        
+        self.leader_url = f"localhost:{NODES_CONFIG[request.leader_id]['port'] + 1000}"
 
         # 2. Verifica buracos ou inconsistências no log
         if request.prev_log_index >= 0:
             if request.prev_log_index >= len(self.log):
-                if qtd_entradas > 0: console.print(f"[yellow][!] Rejeitado: Faltam entradas anteriores ao índice {request.prev_log_index}.[/yellow]")
+                if qtd_entradas > 0: 
+                    console.print(f"[yellow][!] Rejeitado: Faltam entradas anteriores ao índice {request.prev_log_index}.[/yellow]")
                 return raft_pb2.AppendEntriesReply(term=self.term, success=False, last_commit_index=self.commitIndex)
             if self.log[request.prev_log_index].term != request.prev_log_term:
                 if qtd_entradas > 0: console.print(f"[yellow][!] Rejeitado: O termo no índice {request.prev_log_index} está em conflito.[/yellow]")
@@ -388,19 +395,40 @@ class RaftNode(raft_pb2_grpc.RaftServiceServicer):
             success=True,
             last_commit_index=self.commitIndex,
         )
-
-    # Ajustar para segunda parte com a comunicação externa do cliente via proto especifico
-    def receber_comando(self, comando):
-        """Recebe comando do Cliente (só funciona se for o Líder)."""
-        console.print(f"\n[cyan][>] Comando recebido do cliente: '{comando}'[/cyan]")
+    
+    def request_command(self, request, context):
+        console.print(f"\n[cyan][>] Comando recebido do cliente: '{request.command}'[/cyan]")
         
+        # Se este nó não for o líder, avisa o cliente Java e passa a URL do líder real
         if self.state != RaftState.LEADER.value:
-            return "Erro: Nó não é o líder atual."
-        
-        nova_entrada = LogEntry(self.term, comando)
+            return api_pb2.CommandReply(
+                success=False, 
+                leader_url=self.leader_url
+            )
+            
+        nova_entrada = LogEntry(self.term, request.command)
         self.log.append(nova_entrada)
         
-        return f"Comando enfileirado com sucesso no termo {self.term}. Aguardando Quórum em background..."
+        return api_pb2.CommandReply(
+            success=True, 
+            leader_url=self.leader_url
+        )
+
+    def request_log(self, request, context):
+        console.print(f"\n[magenta][?] Cliente {request.client_id} solicitou logs.[/magenta]")
+        
+        # Monta a lista repetida de mensagens do tipo 'Log'
+        lista_de_logs = []
+        # for cmd in self.log:
+        #     lista_de_logs.append(api_pb2.Log(command=cmd.command))
+        for i, log in enumerate(self.log):
+            if i <= self.commitIndex:
+                lista_de_logs.append(api_pb2.Log(command=log.command))
+            else:
+                break
+            
+        # Retorna o LogReply passando a lista para o campo 'entries'
+        return api_pb2.LogReply(entries=lista_de_logs)
 
 
     # =========================================================================
@@ -481,21 +509,29 @@ def iniciar_servidor():
     config = NODES_CONFIG[escolha]
     node = RaftNode(escolha, config['id'])
 
-    # Cria o servidor gRPC com um pool de threads para lidar com requisições concorrentes
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
-    raft_pb2_grpc.add_RaftServiceServicer_to_server(node, server)
+    # Servidor 1: Apenas para comunicação interna do algoritmo Raft
+    server_raft = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
+    raft_pb2_grpc.add_RaftServiceServicer_to_server(node, server_raft)
+    server_raft.add_insecure_port(f"[::]:{config['port']}") # Porta 5001
 
-    # Vincula o servidor à porta configurada
-    server.add_insecure_port(f"[::]:{config['port']}")
-    server.start()
-    console.print(f"[green][NET] Servidor gRPC rodando na porta {config['port']}...[/green]")
+    # Servidor 2: Apenas para os clientes externos
+    server_api = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
+    api_pb2_grpc.add_ApiServiceServicer_to_server(node, server_api)
+    server_api.add_insecure_port(f"[::]:{config['port'] + 1000}") # Porta 6001
+
+    # Inicia ambos
+    server_raft.start()
+    server_api.start()
+    console.print(f"[bold green][+] Servidor Raft iniciado na porta {config['port']}[/bold green]")
+    console.print(f"[bold green][+] Servidor API iniciado na porta {config['port'] + 1000}[/bold green]")
     
     # Inicia a thread responsável pela UI e pelo relógio do Timeout Raft
     thread_loop = threading.Thread(target=node.iniciar_loop_principal, daemon=True)
     thread_loop.start()
 
     # Mantém a thread principal viva esperando o gRPC terminar
-    server.wait_for_termination()
+    server_raft.wait_for_termination()
+    server_api.wait_for_termination()
 
 if __name__ == "__main__":
     iniciar_servidor()

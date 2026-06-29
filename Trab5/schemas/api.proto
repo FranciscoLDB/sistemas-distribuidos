@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package trab5rpc;
+
+service ApiService {
+  
+  rpc request_command (CommandRequest) returns (CommandReply) {}
+
+  rpc request_log (LogRequest) returns (LogReply) {}
+}
+
+message CommandRequest {
+  string command = 1;
+}
+
+message CommandReply {
+  bool success = 1;
+  string leader_url = 2;
+}
+
+message LogRequest {
+  int32 client_id = 1;
+}
+
+message LogReply {
+  repeated Log entries = 1;
+}
+
+message Log {
+  string command = 1;
+}
+
